@@ -1,0 +1,52 @@
+# Docker Compose pour Supabase Auto-Importer (RMS Sync)
+# Déploiement avec Coolify + Traefik (reverse proxy)
+
+version: '3.8'
+
+services:
+  rms-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rms-sync
+    restart: unless-stopped
+    expose:
+      - "5000"
+    environment:
+      # Configuration Supabase
+      - SUPABASE_URL=${SUPABASE_URL:-https://supabase.e-hotelmanager.com}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      
+      # Configuration Flask
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-change-this-secret-key-in-production}
+      - FLASK_HOST=0.0.0.0
+      
+      # Configuration serveur
+      - PORT=5000
+      - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-52428800}
+      
+    volumes:
+      # Volume persistant pour les fichiers uploadés
+      - rms_uploads:/app/uploads
+      
+    labels:
+      # Labels pour Traefik (inclus dans Coolify)
+      - "traefik.enable=true"
+      - "traefik.http.routers.rms-sync.rule=Host(`excel-supabase.e-hotelmanager.com`)"
+      - "traefik.http.routers.rms-sync.entrypoints=websecure"
+      - "traefik.http.routers.rms-sync.tls.certresolver=letsencrypt"
+      - "traefik.http.services.rms-sync.loadbalancer.server.port=5000"
+      - "traefik.http.services.rms-sync.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.rms-sync.loadbalancer.healthcheck.interval=30s"
+      
+    networks:
+      - rms-network
+
+volumes:
+  rms_uploads:
+    driver: local
+
+networks:
+  rms-network:
+    driver: bridge

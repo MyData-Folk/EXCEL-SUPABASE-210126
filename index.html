@@ -1,0 +1,2005 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supabase Auto-Importer (RMS Sync) v2.0</title>
+    <style>
+        /* ============================================================================
+           STYLES CSS - Supabase Auto-Importer (RMS Sync)
+           ============================================================================ */
+        
+        :root {
+            /* Palette de couleurs - Thème Sombre Supabase */
+            --bg-primary: #1C1C1C;
+            --bg-secondary: #242424;
+            --bg-tertiary: #2D2D2D;
+            --bg-card: #2A2A2A;
+            
+            /* Couleurs fonctionnelles */
+            --supabase-green: #3ECF8E;
+            --supabase-green-hover: #2EAA6E;
+            --supabase-green-light: rgba(62, 207, 142, 0.1);
+            
+            /* Couleurs d'état */
+            --text-primary: #EDEDED;
+            --text-secondary: #8B949E;
+            --text-muted: #6E7681;
+            
+            --border-color: #3D3D3D;
+            --border-focus: #3ECF8E;
+            
+            --error: #EF4444;
+            --warning: #F59E0B;
+            --success: #10B981;
+            --info: #3B82F6;
+            
+            /* Typographie */
+            --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', Consolas, monospace;
+            
+            /* Espacements */
+            --spacing-xs: 4px;
+            --spacing-sm: 8px;
+            --spacing-md: 16px;
+            --spacing-lg: 24px;
+            --spacing-xl: 32px;
+            
+            /* Rayons */
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-xl: 16px;
+            
+            /* Transitions */
+            --transition-fast: 150ms ease;
+            --transition-normal: 250ms ease;
+            --transition-slow: 350ms ease;
+        }
+        
+        /* Reset et base */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        html {
+            font-size: 16px;
+            scroll-behavior: smooth;
+        }
+        
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        /* ============================================================================
+           LAYOUT PRINCIPAL
+           ============================================================================ */
+        
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        
+        /* Header */
+        .header {
+            background-color: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: var(--spacing-md) var(--spacing-xl);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+        
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--supabase-green) 0%, #00C896 100%);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 18px;
+        }
+        
+        .logo-text {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .logo-text span {
+            color: var(--supabase-green);
+        }
+        
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+        
+        /* Indicateur de connexion */
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-sm) var(--spacing-md);
+            background-color: var(--bg-tertiary);
+            border-radius: var(--radius-lg);
+            font-size: 0.875rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.connected {
+            background-color: var(--supabase-green);
+        }
+        
+        .status-dot.disconnected {
+            background-color: var(--error);
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Layout principal */
+        .main-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background-color: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            padding: var(--spacing-lg);
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        
+        .sidebar-section {
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        .sidebar-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .template-list {
+            list-style: none;
+        }
+        
+        .template-item {
+            padding: var(--spacing-md);
+            background-color: var(--bg-tertiary);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--spacing-sm);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            border: 1px solid transparent;
+        }
+        
+        .template-item:hover {
+            border-color: var(--supabase-green);
+            background-color: var(--supabase-green-light);
+        }
+        
+        .template-item-name {
+            font-weight: 500;
+            margin-bottom: var(--spacing-xs);
+        }
+        
+        .template-item-table {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        
+        /* Zone principale */
+        .main-content {
+            flex: 1;
+            padding: var(--spacing-xl);
+            overflow-y: auto;
+        }
+        
+        /* Wizard */
+        .wizard {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .wizard-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: var(--spacing-xl);
+            position: relative;
+        }
+        
+        .wizard-steps::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 40px;
+            right: 40px;
+            height: 2px;
+            background-color: var(--border-color);
+            z-index: 0;
+        }
+        
+        .wizard-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-bottom: var(--spacing-sm);
+            transition: all var(--transition-normal);
+        }
+        
+        .wizard-step.active .step-number {
+            background-color: var(--supabase-green);
+            border-color: var(--supabase-green);
+            color: var(--bg-primary);
+        }
+        
+        .wizard-step.completed .step-number {
+            background-color: var(--supabase-green);
+            border-color: var(--supabase-green);
+            color: var(--bg-primary);
+        }
+        
+        .step-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        .wizard-step.active .step-label {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        
+        /* Cards */
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-lg);
+            padding-bottom: var(--spacing-md);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .card-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+        
+        /* ============================================================================
+           COMPOSANTS UI
+           ============================================================================ */
+        
+        /* Dropzone */
+        .dropzone {
+            border: 2px dashed var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl) var(--spacing-lg);
+            text-align: center;
+            transition: all var(--transition-normal);
+            cursor: pointer;
+            background-color: var(--bg-tertiary);
+        }
+        
+        .dropzone:hover, .dropzone.dragover {
+            border-color: var(--supabase-green);
+            background-color: var(--supabase-green-light);
+        }
+        
+        .dropzone-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto var(--spacing-md);
+            background-color: var(--supabase-green-light);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .dropzone-icon svg {
+            width: 32px;
+            height: 32px;
+            stroke: var(--supabase-green);
+        }
+        
+        .dropzone-text {
+            font-size: 1rem;
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        .dropzone-subtext {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        .dropzone input[type="file"] {
+            display: none;
+        }
+        
+        /* Fichier uploadé */
+        .uploaded-file {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            padding: var(--spacing-md);
+            background-color: var(--supabase-green-light);
+            border: 1px solid var(--supabase-green);
+            border-radius: var(--radius-md);
+            margin-top: var(--spacing-md);
+        }
+        
+        .uploaded-file-icon {
+            width: 40px;
+            height: 40px;
+            background-color: var(--supabase-green);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .uploaded-file-info {
+            flex: 1;
+        }
+        
+        .uploaded-file-name {
+            font-weight: 500;
+        }
+        
+        .uploaded-file-meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        
+        /* Select */
+        .form-group {
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .form-label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: var(--spacing-sm);
+            color: var(--text-primary);
+        }
+        
+        .form-select {
+            width: 100%;
+            padding: var(--spacing-md);
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+        
+        .form-select:hover {
+            border-color: var(--text-muted);
+        }
+        
+        .form-select:focus {
+            outline: none;
+            border-color: var(--supabase-green);
+            box-shadow: 0 0 0 3px var(--supabase-green-light);
+        }
+        
+        /* Tableaux */
+        .data-table-container {
+            overflow-x: auto;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        
+        .data-table th {
+            background-color: var(--bg-tertiary);
+            padding: var(--spacing-md);
+            text-align: left;
+            font-weight: 600;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+        }
+        
+        .data-table td {
+            padding: var(--spacing-md);
+            border-top: 1px solid var(--border-color);
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .data-table tr:hover td {
+            background-color: var(--supabase-green-light);
+        }
+        
+        /* Mapping des colonnes */
+        .mapping-container {
+            display: grid;
+            gap: var(--spacing-md);
+        }
+        
+        .mapping-row {
+            display: grid;
+            grid-template-columns: 1fr 40px 1fr 120px;
+            gap: var(--spacing-md);
+            align-items: center;
+            padding: var(--spacing-md);
+            background-color: var(--bg-tertiary);
+            border-radius: var(--radius-md);
+        }
+        
+        .mapping-arrow {
+            color: var(--supabase-green);
+            text-align: center;
+        }
+        
+        .mapping-select {
+            padding: var(--spacing-sm);
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+        
+        .mapping-select:focus {
+            outline: none;
+            border-color: var(--supabase-green);
+        }
+        
+        /* Toggle */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+        
+        .toggle {
+            position: relative;
+            width: 48px;
+            height: 24px;
+            background-color: var(--bg-tertiary);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background-color var(--transition-fast);
+        }
+        
+        .toggle.active {
+            background-color: var(--supabase-green);
+        }
+        
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border-radius: 50%;
+            transition: transform var(--transition-fast);
+        }
+        
+        .toggle.active::after {
+            transform: translateX(24px);
+        }
+        
+        /* Boutons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-size: 1rem;
+            font-weight: 500;
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+        
+        .btn-primary {
+            background-color: var(--supabase-green);
+            color: var(--bg-primary);
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--supabase-green-hover);
+        }
+        
+        .btn-primary:disabled {
+            background-color: var(--bg-tertiary);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        
+        .btn-secondary:hover {
+            border-color: var(--supabase-green);
+        }
+        
+        .btn-danger {
+            background-color: var(--error);
+            color: white;
+        }
+        
+        .btn-sm {
+            padding: var(--spacing-sm) var(--spacing-md);
+            font-size: 0.875rem;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-lg);
+        }
+        
+        /* Progress bar */
+        .progress-container {
+            margin-top: var(--spacing-lg);
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background-color: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--supabase-green) 0%, #00C896 100%);
+            border-radius: 4px;
+            transition: width var(--transition-normal);
+        }
+        
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            margin-top: var(--spacing-sm);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        /* Messages */
+        .message {
+            padding: var(--spacing-md);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .message-success {
+            background-color: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--success);
+            color: var(--success);
+        }
+        
+        .message-error {
+            background-color: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--error);
+            color: var(--error);
+        }
+        
+        .message-warning {
+            background-color: rgba(245, 158, 11, 0.1);
+            border: 1px solid var(--warning);
+            color: var(--warning);
+        }
+        
+        /* Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .stat-card {
+            background-color: var(--bg-tertiary);
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-md);
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--supabase-green);
+        }
+        
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: var(--spacing-sm);
+        }
+        
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all var(--transition-normal);
+        }
+        
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .modal {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl);
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            transform: scale(0.9);
+            transition: transform var(--transition-normal);
+        }
+        
+        .modal-overlay.active .modal {
+            transform: scale(1);
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: var(--spacing-sm);
+        }
+        
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+        
+        /* Input */
+        .form-input {
+            width: 100%;
+            padding: var(--spacing-md);
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all var(--transition-fast);
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--supabase-green);
+            box-shadow: 0 0 0 3px var(--supabase-green-light);
+        }
+        
+        .form-input::placeholder {
+            color: var(--text-muted);
+        }
+        
+        /* Checkbox */
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            cursor: pointer;
+        }
+        
+        .checkbox-input {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--supabase-green);
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-lg);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: var(--spacing-sm);
+        }
+        
+        .tab {
+            padding: var(--spacing-sm) var(--spacing-md);
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+            transition: all var(--transition-fast);
+        }
+        
+        .tab:hover {
+            color: var(--text-primary);
+            background-color: var(--bg-tertiary);
+        }
+        
+        .tab.active {
+            color: var(--supabase-green);
+            background-color: var(--supabase-green-light);
+        }
+        
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-radius: var(--radius-sm);
+            background-color: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+        
+        .badge-success {
+            background-color: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+        
+        .badge-warning {
+            background-color: rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+        }
+        
+        .badge-error {
+            background-color: rgba(239, 68, 68, 0.2);
+            color: var(--error);
+        }
+        
+        /* Footer */
+        .footer {
+            background-color: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            padding: var(--spacing-md) var(--spacing-xl);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 240px;
+            }
+            
+            .mapping-row {
+                grid-template-columns: 1fr;
+                gap: var(--spacing-sm);
+            }
+            
+            .mapping-arrow {
+                transform: rotate(90deg);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+            
+            .wizard-steps {
+                flex-wrap: wrap;
+                gap: var(--spacing-md);
+            }
+            
+            .wizard-steps::before {
+                display: none;
+            }
+            
+            .header {
+                padding: var(--spacing-md);
+            }
+            
+            .main-content {
+                padding: var(--spacing-md);
+            }
+        }
+        
+        /* Animations */
+        .fade-in {
+            animation: fadeIn var(--transition-normal) ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--bg-tertiary);
+            border-top-color: var(--supabase-green);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-color);
+        }
+        
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(28, 28, 28, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all var(--transition-normal);
+        }
+        
+        .loading-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .loading-spinner-lg {
+            width: 60px;
+            height: 60px;
+            border: 4px solid var(--bg-tertiary);
+            border-top-color: var(--supabase-green);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .loading-text {
+            font-size: 1.125rem;
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">RS</div>
+                <div class="logo-text">RMS <span>Sync</span></div>
+            </div>
+            <div class="header-actions">
+                <div class="connection-status">
+                    <div class="status-dot disconnected" id="statusDot"></div>
+                    <span id="statusText">Non connecté</span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Layout principal -->
+        <div class="main-layout">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">Templates</h3>
+                    <ul class="template-list" id="templateList">
+                        <li class="template-item" onclick="showNoTemplatesMessage()">
+                            <div class="template-item-name">Aucun template</div>
+                            <div class="template-item-table">Créez votre premier import</div>
+                        </li>
+                    </ul>
+                </div>
+            </aside>
+            
+            <!-- Zone principale -->
+            <main class="main-content">
+                <div class="wizard">
+                    <!-- Indicateur d'étapes -->
+                    <div class="wizard-steps">
+                        <div class="wizard-step active" data-step="1">
+                            <div class="step-number">1</div>
+                            <div class="step-label">Source</div>
+                        </div>
+                        <div class="wizard-step" data-step="2">
+                            <div class="step-number">2</div>
+                            <div class="step-label">Destination</div>
+                        </div>
+                        <div class="wizard-step" data-step="3">
+                            <div class="step-number">3</div>
+                            <div class="step-label">Mapping</div>
+                        </div>
+                        <div class="wizard-step" data-step="4">
+                            <div class="step-number">4</div>
+                            <div class="step-label">Import</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Étape 1: Source -->
+                    <section class="card fade-in" id="step1">
+                        <div class="card-header">
+                            <h2 class="card-title">1. Fichier Source</h2>
+                        </div>
+                        
+                        <div class="dropzone" id="dropzone">
+                            <div class="dropzone-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                            </div>
+                            <div class="dropzone-text">Glissez-déposez votre fichier ici</div>
+                            <div class="dropzone-subtext">ou cliquez pour sélectionner • CSV, XLSX, XLS</div>
+                            <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+                        </div>
+                        
+                        <div id="uploadedFileContainer" style="display: none;">
+                            <div class="uploaded-file">
+                                <div class="uploaded-file-icon">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                </div>
+                                <div class="uploaded-file-info">
+                                    <div class="uploaded-file-name" id="uploadedFileName"></div>
+                                    <div class="uploaded-file-meta" id="uploadedFileMeta"></div>
+                                </div>
+                                <button class="btn btn-secondary btn-sm" onclick="clearFile()">✕</button>
+                            </div>
+                        </div>
+                        
+                        <div id="sheetSelectContainer" style="display: none; margin-top: var(--spacing-lg);">
+                            <div class="form-group">
+                                <label class="form-label">Sélectionner l'onglet (Excel)</label>
+                                <select class="form-select" id="sheetSelect">
+                                    <option value="">Choisir un onglet...</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div id="previewContainer" style="display: none; margin-top: var(--spacing-lg);">
+                            <div class="card-header" style="margin-bottom: var(--spacing-md);">
+                                <h3 class="card-title" style="font-size: 1rem;">Aperçu des données</h3>
+                                <span class="badge badge-success" id="rowCountBadge"></span>
+                            </div>
+                            <div class="data-table-container">
+                                <table class="data-table" id="previewTable">
+                                    <thead id="previewTableHead"></thead>
+                                    <tbody id="previewTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div class="btn-group" id="step1Actions" style="display: none;">
+                            <button class="btn btn-primary" onclick="goToStep(2)">
+                                Suivant →
+                            </button>
+                        </div>
+                    </section>
+                    
+                    <!-- Étape 2: Destination -->
+                    <section class="card fade-in" id="step2" style="display: none;">
+                        <div class="card-header">
+                            <h2 class="card-title">2. Destination Supabase</h2>
+                            <button class="btn btn-secondary btn-sm" onclick="loadTables()">
+                                <span class="loading-spinner" id="refreshTablesSpinner" style="display: none;"></span>
+                                ↻ Actualiser
+                            </button>
+                        </div>
+                        
+                        <div class="tabs">
+                            <button class="tab active" data-tab="append" onclick="switchTab('append')">Mise à jour (Append)</button>
+                            <button class="tab" data-tab="create" onclick="switchTab('create')">Nouvelle table (Create)</button>
+                        </div>
+                        
+                        <!-- Mode Append -->
+                        <div id="tab-append">
+                            <div class="form-group">
+                                <label class="form-label">Table existante</label>
+                                <select class="form-select" id="existingTableSelect" onchange="loadTableColumns()">
+                                    <option value="">Sélectionner une table...</option>
+                                </select>
+                            </div>
+                            
+                            <div id="existingTableColumns" style="display: none;">
+                                <div class="form-group">
+                                    <label class="form-label">Colonnes de la table</label>
+                                    <div class="data-table-container">
+                                        <table class="data-table" id="targetTableColumns">
+                                            <thead>
+                                                <tr>
+                                                    <th>Colonne</th>
+                                                    <th>Type</th>
+                                                    <th>Nullable</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="targetTableColumnsBody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Mode Create -->
+                        <div id="tab-create" style="display: none;">
+                            <div class="message message-warning">
+                                <strong>Mode Création:</strong> Une nouvelle table sera créée automatiquement basée sur le schéma du fichier. Les types de données seront déduits des valeurs.
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Nom de la nouvelle table</label>
+                                <input type="text" class="form-input" id="newTableName" placeholder="ex: import_stocks_2026">
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-container">
+                                    <input type="checkbox" class="checkbox-input" id="splitDatetime">
+                                    <span>Séparer automatiquement les colonnes Date/Heure</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="btn-group">
+                            <button class="btn btn-secondary" onclick="goToStep(1)">← Précédent</button>
+                            <button class="btn btn-primary" onclick="goToStep(3)">Suivant →</button>
+                        </div>
+                    </section>
+                    
+                    <!-- Étape 3: Mapping -->
+                    <section class="card fade-in" id="step3" style="display: none;">
+                        <div class="card-header">
+                            <h2 class="card-title">3. Mapping et Nettoyage</h2>
+                        </div>
+                        
+                        <div class="message message-warning" id="mappingWarning" style="display: none;">
+                            <strong>Attention:</strong> Certaines colonnes du fichier n'ont pas de correspondance dans la table cible.
+                        </div>
+                        
+                        <div class="mapping-container" id="mappingContainer">
+                            <!-- Le mapping sera généré dynamiquement -->
+                        </div>
+                        
+                        <div class="btn-group" style="margin-top: var(--spacing-xl);">
+                            <button class="btn btn-secondary" onclick="goToStep(2)">← Précédent</button>
+                            <button class="btn btn-primary" onclick="goToStep(4)">Suivant →</button>
+                        </div>
+                    </section>
+                    
+                    <!-- Étape 4: Import -->
+                    <section class="card fade-in" id="step4" style="display: none;">
+                        <div class="card-header">
+                            <h2 class="card-title">4. Import</h2>
+                        </div>
+                        
+                        <div id="importSummary">
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-value" id="summaryRows">0</div>
+                                    <div class="stat-label">Lignes à importer</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value" id="summaryColumns">0</div>
+                                    <div class="stat-label">Colonnes</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value" id="summaryTable">-</div>
+                                    <div class="stat-label">Table cible</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="importProgress" class="progress-container" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                            </div>
+                            <div class="progress-text">
+                                <span id="progressText">Traitement en cours...</span>
+                                <span id="progressPercent">0%</span>
+                            </div>
+                        </div>
+                        
+                        <div id="importResult" style="display: none;">
+                            <!-- Résultat de l'import -->
+                        </div>
+                        
+                        <div class="btn-group">
+                            <button class="btn btn-secondary" onclick="goToStep(3)">← Précédent</button>
+                            <button class="btn btn-primary" id="importBtn" onclick="executeImport()">
+                                🚀 Lancer l'import
+                            </button>
+                            <button class="btn btn-secondary" id="saveTemplateBtn" onclick="openSaveTemplateModal()">
+                                💾 Sauvegarder le template
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        </div>
+        
+        <!-- Footer -->
+        <footer class="footer">
+            <div>RMS Sync v2.0 • 21 Janvier 2026</div>
+            <div>Propulsé par Supabase</div>
+        </footer>
+    </div>
+    
+    <!-- Modal Sauvegarder Template -->
+    <div class="modal-overlay" id="saveTemplateModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Sauvegarder le template</h3>
+                <button class="modal-close" onclick="closeSaveTemplateModal()">✕</button>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Nom du template</label>
+                <input type="text" class="form-input" id="templateName" placeholder="ex: Import Stocks Hebdomadaire">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Description (optionnel)</label>
+                <textarea class="form-input" id="templateDescription" rows="3" placeholder="Description de cet import..."></textarea>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-secondary" onclick="closeSaveTemplateModal()">Annuler</button>
+                <button class="btn btn-primary" onclick="saveTemplate()">💾 Sauvegarder</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner-lg"></div>
+        <div class="loading-text" id="loadingText">Traitement en cours...</div>
+    </div>
+    
+    <script>
+        // ============================================================================
+        // JAVASCRIPT - Supabase Auto-Importer (RMS Sync)
+        // ============================================================================
+        
+        // État de l'application
+        const state = {
+            currentStep: 1,
+            currentTab: 'append',
+            uploadedFile: null,
+            previewData: null,
+            sourceHeaders: [],
+            sourceColumns: [],
+            targetTables: [],
+            targetColumns: [],
+            mapping: {},
+            columnTypes: {},
+            importMode: 'append',
+            templates: []
+        };
+        
+        // Configuration API
+        const API_BASE = '/api';
+        
+        // ============================================================================
+        // INITIALISATION
+        // ============================================================================
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeApp();
+        });
+        
+        async function initializeApp() {
+            setupEventListeners();
+            await loadTemplates();
+            
+            // Essayer de charger les tables Supabase
+            try {
+                await loadTables();
+            } catch (e) {
+                console.log('Tables Supabase non disponibles:', e.message);
+            }
+        }
+        
+        function setupEventListeners() {
+            // Dropzone
+            const dropzone = document.getElementById('dropzone');
+            const fileInput = document.getElementById('fileInput');
+            
+            dropzone.addEventListener('click', () => fileInput.click());
+            
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('dragover');
+            });
+            
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.classList.remove('dragover');
+            });
+            
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFileUpload(files[0]);
+                }
+            });
+            
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFileUpload(e.target.files[0]);
+                }
+            });
+            
+            // Select sheet
+            document.getElementById('sheetSelect').addEventListener('change', (e) => {
+                if (state.uploadedFile && e.target.value) {
+                    loadPreview(state.uploadedFile.filepath, e.target.value);
+                }
+            });
+            
+            // Table existante
+            document.getElementById('existingTableSelect').addEventListener('change', (e) => {
+                if (e.target.value) {
+                    loadTableColumns(e.target.value);
+                }
+            });
+        }
+        
+        // ============================================================================
+        // GESTION DES FICHIERS
+        // ============================================================================
+        
+        async function handleFileUpload(file) {
+            showLoading('Upload du fichier en cours...');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch(`${API_BASE}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Erreur lors de l\'upload');
+                }
+                
+                const data = await response.json();
+                state.uploadedFile = data;
+                state.sourceHeaders = data.headers || [];
+                
+                // Afficher le fichier uploadé
+                displayUploadedFile(data);
+                
+                // Gérer les onglets Excel
+                if (data.sheets && data.sheets.length > 0) {
+                    displaySheetSelect(data.sheets);
+                    loadPreview(data.filepath, data.sheets[0]);
+                } else {
+                    loadPreview(data.filepath, null);
+                }
+                
+                hideLoading();
+                
+            } catch (error) {
+                hideLoading();
+                alert('Erreur: ' + error.message);
+            }
+        }
+        
+        function displayUploadedFile(data) {
+            document.getElementById('dropzone').style.display = 'none';
+            document.getElementById('uploadedFileContainer').style.display = 'block';
+            
+            document.getElementById('uploadedFileName').textContent = data.filename;
+            
+            let meta = `${data.file_type.toUpperCase()} • ${data.total_rows} lignes`;
+            if (data.sheets && data.sheets.length > 0) {
+                meta += ` • ${data.sheets.length} onglet(s)`;
+            }
+            document.getElementById('uploadedFileMeta').textContent = meta;
+            
+            document.getElementById('step1Actions').style.display = 'flex';
+        }
+        
+        function displaySheetSelect(sheets) {
+            const container = document.getElementById('sheetSelectContainer');
+            const select = document.getElementById('sheetSelect');
+            
+            select.innerHTML = sheets.map(sheet => 
+                `<option value="${sheet}">${sheet}</option>`
+            ).join('');
+            
+            container.style.display = 'block';
+        }
+        
+        async function loadPreview(filename, sheetName) {
+            showLoading('Chargement de l\'aperçu...');
+            
+            try {
+                const response = await fetch(`${API_BASE}/preview`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename, sheet_name: sheetName })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Erreur lors du chargement de l\'aperçu');
+                }
+                
+                const data = await response.json();
+                state.previewData = data;
+                state.sourceHeaders = data.headers;
+                state.sourceColumns = data.normalized_headers;
+                
+                displayPreview(data);
+                hideLoading();
+                
+            } catch (error) {
+                hideLoading();
+                alert('Erreur: ' + error.message);
+            }
+        }
+        
+        function displayPreview(data) {
+            document.getElementById('previewContainer').style.display = 'block';
+            document.getElementById('rowCountBadge').textContent = `${data.total_rows} lignes`;
+            
+            // Headers
+            const thead = document.getElementById('previewTableHead');
+            thead.innerHTML = '<tr>' + data.headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
+            
+            // Body
+            const tbody = document.getElementById('previewTableBody');
+            tbody.innerHTML = data.preview.map(row => 
+                '<tr>' + data.headers.map(h => `<td>${row[h] ?? ''}</td>`).join('') + '</tr>'
+            ).join('');
+        }
+        
+        function clearFile() {
+            state.uploadedFile = null;
+            state.previewData = null;
+            state.sourceHeaders = [];
+            
+            document.getElementById('dropzone').style.display = 'block';
+            document.getElementById('uploadedFileContainer').style.display = 'none';
+            document.getElementById('sheetSelectContainer').style.display = 'none';
+            document.getElementById('previewContainer').style.display = 'none';
+            document.getElementById('step1Actions').style.display = 'none';
+            
+            document.getElementById('fileInput').value = '';
+        }
+        
+        // ============================================================================
+           NAVIGATION DU WIZARD
+           ============================================================================
+        
+        function goToStep(step) {
+            // Validation avant de passer à l'étape suivante
+            if (step > state.currentStep) {
+                if (!validateStep(state.currentStep)) {
+                    return;
+                }
+            }
+            
+            // Masquer toutes les étapes
+            document.querySelectorAll('.wizard-step').forEach(s => {
+                s.classList.remove('active');
+                if (parseInt(s.dataset.step) < step) {
+                    s.classList.add('completed');
+                } else {
+                    s.classList.remove('completed');
+                }
+            });
+            
+            document.querySelectorAll('.card[id^="step"]').forEach(c => {
+                c.style.display = 'none';
+            });
+            
+            // Afficher l'étape courante
+            document.querySelector(`.wizard-step[data-step="${step}"]`).classList.add('active');
+            document.getElementById(`step${step}`).style.display = 'block';
+            document.getElementById(`step${step}`).classList.add('fade-in');
+            
+            state.currentStep = step;
+            
+            // Actions spécifiques par étape
+            if (step === 2) {
+                setupStep2();
+            } else if (step === 3) {
+                setupStep3();
+            } else if (step === 4) {
+                setupStep4();
+            }
+        }
+        
+        function validateStep(step) {
+            if (step === 1) {
+                if (!state.uploadedFile) {
+                    alert('Veuillez d\'abord upload un fichier');
+                    return false;
+                }
+            }
+            if (step === 2) {
+                if (state.importMode === 'append') {
+                    const table = document.getElementById('existingTableSelect').value;
+                    if (!table) {
+                        alert('Veuillez sélectionner une table cible');
+                        return false;
+                    }
+                } else {
+                    const tableName = document.getElementById('newTableName').value.trim();
+                    if (!tableName) {
+                        alert('Veuillez entrer un nom de table');
+                        return false;
+                    }
+                    // Validation du nom de table
+                    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tableName)) {
+                        alert('Le nom de table doit commencer par une lettre ou underscore et contenir uniquement des caractères alphanumériques');
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+        
+        // ============================================================================
+        // ÉTAPE 2: DESTINATION
+        // ============================================================================
+        
+        function setupStep2() {
+            if (state.importMode === 'append' && state.targetTables.length > 0) {
+                // Les tables sont déjà chargées
+            }
+        }
+        
+        async function loadTables() {
+            const spinner = document.getElementById('refreshTablesSpinner');
+            spinner.style.display = 'inline-block';
+            
+            try {
+                const response = await fetch(`${API_BASE}/tables`);
+                const data = await response.json();
+                
+                state.targetTables = data.tables || [];
+                
+                const select = document.getElementById('existingTableSelect');
+                select.innerHTML = '<option value="">Sélectionner une table...</option>' +
+                    state.targetTables.map(t => `<option value="${t}">${t}</option>`).join('');
+                
+                spinner.style.display = 'none';
+                
+            } catch (error) {
+                console.error('Erreur lors du chargement des tables:', error);
+                spinner.style.display = 'none';
+                
+                // Fallback: afficher un message
+                const select = document.getElementById('existingTableSelect');
+                select.innerHTML = '<option value="">Tables non disponibles (configurez Supabase)</option>';
+            }
+        }
+        
+        async function loadTableColumns(tableName) {
+            if (!tableName) {
+                document.getElementById('existingTableColumns').style.display = 'none';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/tables/${tableName}/columns`);
+                const data = await response.json();
+                
+                state.targetColumns = data.columns || [];
+                
+                const tbody = document.getElementById('targetTableColumnsBody');
+                tbody.innerHTML = state.targetColumns.map(col => `
+                    <tr>
+                        <td>${col.column_name}</td>
+                        <td><span class="badge">${col.data_type}</span></td>
+                        <td>${col.is_nullable === 'YES' ? 'Oui' : 'Non'}</td>
+                    </tr>
+                `).join('');
+                
+                document.getElementById('existingTableColumns').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Erreur lors du chargement des colonnes:', error);
+            }
+        }
+        
+        function switchTab(tab) {
+            state.importMode = tab;
+            
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+            
+            document.getElementById('tab-append').style.display = tab === 'append' ? 'block' : 'none';
+            document.getElementById('tab-create').style.display = tab === 'create' ? 'block' : 'none';
+        }
+        
+        // ============================================================================
+        // ÉTAPE 3: MAPPING
+        // ============================================================================
+           ============================================================================
+        
+        function setupStep3() {
+            generateMapping();
+        }
+        
+        function generateMapping() {
+            const container = document.getElementById('mappingContainer');
+            const sourceHeaders = state.sourceHeaders;
+            
+            // Colonnes de la table cible (si append) ou du fichier source (si create)
+            let targetHeaders;
+            
+            if (state.importMode === 'append') {
+                targetHeaders = state.targetColumns.map(c => c.column_name);
+            } else {
+                targetHeaders = sourceHeaders.map(h => snakeCase(h));
+            }
+            
+            // Mapping automatique basé sur la similarité
+            const mapping = {};
+            const columnTypes = {};
+            
+            container.innerHTML = sourceHeaders.map((header, index) => {
+                const normalizedHeader = snakeCase(header);
+                
+                // Trouver une correspondance automatique
+                let targetCol = targetHeaders.find(t => 
+                    t.toLowerCase() === normalizedHeader.toLowerCase()
+                );
+                
+                if (!targetCol && index < targetHeaders.length) {
+                    targetCol = targetHeaders[index];
+                }
+                
+                mapping[header] = targetCol || '';
+                
+                // Type par défaut
+                columnTypes[header] = 'text';
+                
+                return `
+                    <div class="mapping-row">
+                        <div>
+                            <div class="form-label">Source: ${header}</div>
+                        </div>
+                        <div class="mapping-arrow">→</div>
+                        <div>
+                            <label class="form-label">Destination</label>
+                            <select class="mapping-select" data-source="${header}" onchange="updateMapping('${header}', this.value)">
+                                <option value="">-- Ignorer --</option>
+                                ${targetHeaders.map(t => 
+                                    `<option value="${t}" ${t === targetCol ? 'selected' : ''}>${t}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Type</label>
+                            <select class="mapping-select" data-source="${header}" onchange="updateColumnType('${header}', this.value)">
+                                <option value="text">Texte</option>
+                                <option value="numeric">Numérique</option>
+                                <option value="date">Date</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            state.mapping = mapping;
+            state.columnTypes = columnTypes;
+            
+            // Vérifier s'il y a des colonnes sans correspondance
+            const warning = document.getElementById('mappingWarning');
+            const unmapped = sourceHeaders.filter(h => !mapping[h]);
+            warning.style.display = unmapped.length > 0 ? 'block' : 'none';
+        }
+        
+        function updateMapping(source, target) {
+            state.mapping[source] = target;
+        }
+        
+        function updateColumnType(source, type) {
+            state.columnTypes[source] = type;
+        }
+        
+        function snakeCase(str) {
+            return str.toLowerCase()
+                .replace(/[\s\-]+/g, '_')
+                .replace(/[^a-z0-9_]/g, '')
+                .replace(/_+/g, '_');
+        }
+        
+        // ============================================================================
+        // ÉTAPE 4: IMPORT
+        // ============================================================================
+        
+        function setupStep4() {
+            const targetTable = state.importMode === 'append' 
+                ? document.getElementById('existingTableSelect').value
+                : document.getElementById('newTableName').value;
+            
+            document.getElementById('summaryRows').textContent = state.previewData.total_rows;
+            document.getElementById('summaryColumns').textContent = state.sourceHeaders.length;
+            document.getElementById('summaryTable').textContent = targetTable;
+            
+            document.getElementById('importResult').style.display = 'none';
+            document.getElementById('importProgress').style.display = 'none';
+            document.getElementById('importBtn').style.display = 'inline-flex';
+            document.getElementById('saveTemplateBtn').style.display = 'inline-flex';
+        }
+        
+        async function executeImport() {
+            const targetTable = state.importMode === 'append' 
+                ? document.getElementById('existingTableSelect').value
+                : document.getElementById('newTableName').value;
+            
+            const endpoint = state.importMode === 'append' ? 'append' : 'create';
+            
+            showLoading('Import en cours...');
+            
+            const payload = {
+                filename: state.uploadedFile.filepath,
+                sheet_name: document.getElementById('sheetSelect')?.value || null,
+                table_name: targetTable,
+                column_mapping: state.mapping,
+                column_types: state.columnTypes,
+                split_datetime: document.getElementById('splitDatetime')?.checked || false
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/import/${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                hideLoading();
+                
+                if (data.error) {
+                    showImportError(data.error);
+                } else {
+                    showImportSuccess(data);
+                }
+                
+            } catch (error) {
+                hideLoading();
+                showImportError(error.message);
+            }
+        }
+        
+        function showImportSuccess(data) {
+            document.getElementById('importBtn').style.display = 'none';
+            document.getElementById('saveTemplateBtn').style.display = 'none';
+            
+            const resultDiv = document.getElementById('importResult');
+            resultDiv.innerHTML = `
+                <div class="message message-success">
+                    <strong>✅ Import réussi!</strong>
+                    <p>${data.rows_inserted} ligne(s) insérée(s) dans la table "${data.table_name}"</p>
+                    ${data.warning ? `<p class="warning">${data.warning}</p>` : ''}
+                    ${data.sql_script ? `
+                        <details>
+                            <summary>Script SQL (si création manuelle)</summary>
+                            <pre style="background: var(--bg-tertiary); padding: var(--spacing-md); border-radius: var(--radius-md); overflow-x: auto;">${data.sql_script}</pre>
+                        </details>
+                    ` : ''}
+                </div>
+            `;
+            resultDiv.style.display = 'block';
+        }
+        
+        function showImportError(error) {
+            document.getElementById('importBtn').style.display = 'none';
+            
+            const resultDiv = document.getElementById('importResult');
+            resultDiv.innerHTML = `
+                <div class="message message-error">
+                    <strong>❌ Erreur lors de l'import</strong>
+                    <p>${error}</p>
+                </div>
+            `;
+            resultDiv.style.display = 'block';
+        }
+        
+        // ============================================================================
+        // TEMPLATES
+        // ============================================================================
+        
+        async function loadTemplates() {
+            try {
+                const response = await fetch(`${API_BASE}/templates`);
+                const data = await response.json();
+                
+                state.templates = data.templates || [];
+                renderTemplates();
+                
+            } catch (error) {
+                console.error('Erreur lors du chargement des templates:', error);
+            }
+        }
+        
+        function renderTemplates() {
+            const container = document.getElementById('templateList');
+            
+            if (state.templates.length === 0) {
+                container.innerHTML = `
+                    <li class="template-item" onclick="showNoTemplatesMessage()">
+                        <div class="template-item-name">Aucun template</div>
+                        <div class="template-item-table">Créez votre premier import</div>
+                    </li>
+                `;
+                return;
+            }
+            
+            container.innerHTML = state.templates.map(t => `
+                <li class="template-item" onclick="applyTemplate('${t.id}')">
+                    <div class="template-item-name">${t.name}</div>
+                    <div class="template-item-table">${t.target_table} • ${t.source_type}</div>
+                </li>
+            `).join('');
+        }
+        
+        function showNoTemplatesMessage() {
+            alert('Aucun template disponible. Effectuez d\'abord un import et sauvegardez-le.');
+        }
+        
+        async function applyTemplate(templateId) {
+            if (!state.uploadedFile) {
+                alert('Veuillez d\'abord uploader un fichier');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/templates/${templateId}/apply`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filename: state.uploadedFile.filepath,
+                        sheet_name: document.getElementById('sheetSelect')?.value || null
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                
+                // Appliquer le template
+                const template = data.template;
+                
+                if (template.target_table) {
+                    if (state.importMode === 'append') {
+                        document.getElementById('existingTableSelect').value = template.target_table;
+                        await loadTableColumns(template.target_table);
+                    } else {
+                        document.getElementById('newTableName').value = template.target_table;
+                    }
+                }
+                
+                // Appliquer les mappings
+                state.mapping = template.column_mapping || {};
+                state.columnTypes = template.column_types || {};
+                
+                // Aller à l'étape de mapping
+                goToStep(3);
+                
+            } catch (error) {
+                alert('Erreur lors de l\'application du template: ' + error.message);
+            }
+        }
+        
+        function openSaveTemplateModal() {
+            document.getElementById('saveTemplateModal').classList.add('active');
+        }
+        
+        function closeSaveTemplateModal() {
+            document.getElementById('saveTemplateModal').classList.remove('active');
+            document.getElementById('templateName').value = '';
+            document.getElementById('templateDescription').value = '';
+        }
+        
+        async function saveTemplate() {
+            const name = document.getElementById('templateName').value.trim();
+            const description = document.getElementById('templateDescription').value.trim();
+            
+            if (!name) {
+                alert('Veuillez entrer un nom de template');
+                return;
+            }
+            
+            const targetTable = state.importMode === 'append' 
+                ? document.getElementById('existingTableSelect').value
+                : document.getElementById('newTableName').value;
+            
+            if (!targetTable) {
+                alert('Aucune table cible définie');
+                return;
+            }
+            
+            showLoading('Sauvegarde du template...');
+            
+            try {
+                const response = await fetch(`${API_BASE}/templates`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name,
+                        description,
+                        source_type: state.uploadedFile.file_type,
+                        target_table: targetTable,
+                        sheet_name: document.getElementById('sheetSelect')?.value || null,
+                        column_mapping: state.mapping,
+                        column_types: state.columnTypes
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                hideLoading();
+                closeSaveTemplateModal();
+                await loadTemplates();
+                alert('Template sauvegardé avec succès!');
+                
+            } catch (error) {
+                hideLoading();
+                alert('Erreur: ' + error.message);
+            }
+        }
+        
+        // ============================================================================
+        // UTILITAIRES
+        // ============================================================================
+        
+        function showLoading(text = 'Traitement en cours...') {
+            document.getElementById('loadingText').textContent = text;
+            document.getElementById('loadingOverlay').classList.add('active');
+        }
+        
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.remove('active');
+        }
+        
+        // Simulation de connexion Supabase (pour l'interface)
+        function checkSupabaseConnection() {
+            // Envoi d'une requête ping à l'API
+            fetch(`${API_BASE}/health`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'healthy') {
+                        document.getElementById('statusDot').classList.add('connected');
+                        document.getElementById('statusDot').classList.remove('disconnected');
+                        document.getElementById('statusText').textContent = 'Serveur connecté';
+                    } else {
+                        document.getElementById('statusText').textContent = 'Erreur de connexion';
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('statusDot').classList.add('disconnected');
+                    document.getElementById('statusDot').classList.remove('connected');
+                    document.getElementById('statusText').textContent = 'Non connecté';
+                });
+        }
+        
+        // Vérifier la connexion au démarrage
+        setTimeout(checkSupabaseConnection, 1000);
+    </script>
+</body>
+</html>
