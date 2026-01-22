@@ -420,7 +420,8 @@ def dataframe_to_json_records(df):
                 k = str(key)
                 
                 # Gérer les valeurs
-                if value is None or (isinstance(value, float) and (pd.isna(value) or value != value)):
+                if pd.isna(value):
+                    # Gère NaN, None, et NaT (Not a Time)
                     clean_record[k] = None
                 elif isinstance(value, (pd.Timestamp, datetime)):
                     # L'utilisateur ne veut pas l'heure, juste YYYY-MM-DD
@@ -429,7 +430,7 @@ def dataframe_to_json_records(df):
                     clean_record[k] = str(value)
                 elif isinstance(value, (int, float)) and not isinstance(value, bool):
                     # Nettoyage Inf et NaN pour les nombres
-                    if value != value or value == float('inf') or value == float('-inf'):
+                    if value == float('inf') or value == float('-inf'):
                         clean_record[k] = None
                     else:
                         clean_record[k] = value
