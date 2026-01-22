@@ -392,7 +392,12 @@ def dataframe_to_json_records(df):
         for key, value in record.items():
             if pd.isna(value):
                 record[key] = None
-            elif isinstance(value, (pd.Timestamp, pd.Timedelta, datetime)):
+            elif isinstance(value, (pd.Timestamp, datetime)):
+                if hasattr(value, 'hour') and value.hour == 0 and value.minute == 0 and value.second == 0:
+                    record[key] = value.strftime('%Y-%m-%d')
+                else:
+                    record[key] = value.isoformat()
+            elif isinstance(value, pd.Timedelta):
                 record[key] = str(value)
             elif isinstance(value, (int, float)) and not isinstance(value, bool):
                 # Vérifier si c'est un NaN masqué

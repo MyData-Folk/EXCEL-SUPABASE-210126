@@ -638,6 +638,7 @@
                         <div id="importResult"></div>
                         <div class="btn-group">
                             <button class="btn btn-secondary" onclick="goToStep(3)">Precedent</button>
+                            <button class="btn btn-secondary" onclick="resetAll()">Reinitialiser</button>
                             <button class="btn btn-primary" id="importBtn" onclick="executeImport()">Lancer
                                 l'import</button>
                         </div>
@@ -793,6 +794,13 @@
                     tbody.innerHTML = data.preview.map(function (row) {
                         return '<tr>' + data.headers.map(function (h) { return '<td>' + (row[h] || '') + '</td>'; }).join('') + '</tr>';
                     }).join('');
+                }
+            }
+
+            window.resetAll = function () {
+                if (confirm('Voulez-vous vraiment tout reinitialiser ?')) {
+                    clearFile();
+                    goToStep(1);
                 }
             }
 
