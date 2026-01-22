@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir \
     pandas==2.2.0 \
     openpyxl==3.1.2 \
     xlrd==2.0.1 \
-    supabase==2.3.4 \
+    supabase==2.27.2 \
     python-dotenv==1.0.1 \
     python-dateutil==2.8.2 \
     chardet==5.2.0
