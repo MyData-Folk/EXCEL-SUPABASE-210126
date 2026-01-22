@@ -543,7 +543,7 @@
                             <div class="form-group">
                                 <label class="form-label">Selectionner l'onglet (Excel)</label>
                                 <select class="form-select" id="sheetSelect"
-                                    onchange="state.headerRowIndex = null; window.loadPreview(state.uploadedFile.filepath, this.value)">
+                                    onchange="window.state.headerRowIndex = null; window.loadPreview(window.state.uploadedFile.filepath, this.value)">
                                     <option value="">Choisir un onglet...</option>
                                 </select>
                             </div>
@@ -554,7 +554,7 @@
                                 <h3 class="card-title" style="font-size: 1rem;">Aperçu des données</h3>
                                 <div style="display: flex; align-items: center; gap: 12px;">
                                     <button class="btn btn-secondary btn-sm"
-                                        onclick="loadPreview(state.uploadedFile.filepath, document.getElementById('sheetSelect').value)">
+                                        onclick="window.loadPreview(window.state.uploadedFile.filepath, document.getElementById('sheetSelect').value)">
                                         <span>🔄 Rafraîchir</span>
                                     </button>
                                     <span class="badge" id="rowCountBadge"></span>
@@ -707,7 +707,7 @@
     </div>
     <script>
         (function () {
-            var state = {
+            window.state = {
                 currentStep: 1,
                 currentTab: 'append',
                 uploadedFile: null,
@@ -723,6 +723,7 @@
                 ignoredRows: [],
                 headerRowIndex: null
             };
+            var state = window.state;
             var API_BASE = '/api';
 
             function initializeApp() {
@@ -780,9 +781,9 @@
                         displayUploadedFile(data);
                         if (data.sheets && data.sheets.length > 0) {
                             displaySheetSelect(data.sheets);
-                            window.loadPreview(data.filepath, data.sheets[0]);
+                            window.loadPreview(window.state.uploadedFile.filepath, data.sheets[0]);
                         } else {
-                            window.loadPreview(data.filepath, null);
+                            window.loadPreview(window.state.uploadedFile.filepath, null);
                         }
                     })
                     .catch(function (error) {
@@ -883,10 +884,13 @@
 
             window.useAsHeader = function (idx) {
                 if (!confirm('Utiliser cette ligne comme noms de colonnes ? (Cela rechargera le fichier)')) return;
-                state.headerRowIndex = idx;
+                // Calculer l'index absolu dans le fichier original
+                var currentH = state.headerRowIndex || 0;
+                var newH = currentH + idx + 1;
+                state.headerRowIndex = newH;
                 state.ignoredRows = []; // Crucial: les index changent
                 var sheet = document.getElementById('sheetSelect') ? document.getElementById('sheetSelect').value : null;
-                window.loadPreview(state.uploadedFile.filepath, sheet, idx);
+                window.loadPreview(state.uploadedFile.filepath, sheet, newH);
             }
 
             window.toggleIgnoreRow = function (idx) {

@@ -10,6 +10,7 @@ import os
 import json
 import uuid
 import re
+import logging
 from datetime import datetime
 from pathlib import Path
 from functools import wraps
@@ -19,7 +20,6 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
-import logging
 
 # Configuration des logs
 logging.basicConfig(
@@ -329,6 +329,10 @@ def normalize_dataframe(df, column_types=None, column_mapping=None, split_dateti
         valid_mapping = {k: v for k, v in column_mapping.items() if v and k in df.columns}
         if valid_mapping:
             df = df[list(valid_mapping.keys())].rename(columns=valid_mapping)
+        else:
+            # Si mapping vide et mode append, on risque d'envoyer des colonnes inexistantes
+            # On laisse passer mais on logge
+            logger.warning("normalize_dataframe: valid_mapping est vide")
     else:
         # Snake_case par défaut pour toutes les colonnes
         df.columns = [snake_case(col) for col in df.columns]
@@ -436,11 +440,12 @@ def dataframe_to_json_records(df):
                     clean_record[k] = str(value)
             
             # Vérification finale de sérialisation JSON pour cet enregistrement
-            import json
             try:
+                # json.dumps a été déplacé en haut
                 json.dumps(clean_record)
                 clean_records.append(clean_record)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as je:
+                logger.warning(f"Serialization fallback pour un record: {str(je)}")
                 # Si un enregistrement échoue encore, on force tout en string
                 safe_record = {str(k): str(v) if v is not None else None for k, v in clean_record.items()}
                 clean_records.append(safe_record)
@@ -773,10 +778,14 @@ def import_append():
             batch = records[i:i + batch_size]
             try:
                 result = supabase.table(table_name).insert(batch).execute()
-                if result.data:
+                # On vérifie explicitement si PostgREST retourne une erreur
+                if hasattr(result, 'error') and result.error:
+                    errors.append(f"Batch {i//batch_size + 1} Error: {result.error}")
+                elif result.data:
                     total_inserted += len(result.data)
             except Exception as e:
-                errors.append(f"Batch {i//batch_size + 1}: {str(e)}")
+                logger.error(f"Erreur d'insertion batch {i//batch_size + 1}: {str(e)}")
+                errors.append(f"Batch {i//batch_size + 1} Exception: {str(e)}")
         
         return jsonify({
             'success': True,
@@ -889,9 +898,15 @@ def import_create():
         
         for i in range(0, len(records), batch_size):
             batch = records[i:i + batch_size]
-            result = supabase.table(table_name).insert(batch).execute()
-            if result.data:
-                total_inserted += len(result.data)
+            try:
+                result = supabase.table(table_name).insert(batch).execute()
+                if hasattr(result, 'error') and result.error:
+                    raise Exception(f"Supabase Error: {result.error}")
+                if result.data:
+                    total_inserted += len(result.data)
+            except Exception as e:
+                logger.error(f"Erreur d'insertion batch {i//batch_size + 1}: {str(e)}")
+                raise # On arrête tout en mode Create car la table est nouvelle
         
         return jsonify({
             'success': True,
