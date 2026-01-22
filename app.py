@@ -404,12 +404,28 @@ def dataframe_to_json_records(df):
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Vérification de l'état du serveur."""
-    return jsonify({
+    """
+    Vérification de l'état du serveur et de la connexion Supabase.
+    """
+    status = {
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'version': '2.0'
-    })
+        'version': '2.0',
+        'supabase': 'unknown'
+    }
+    
+    try:
+        supabase = get_supabase_client()
+        # Faire un petit appel léger pour tester la connexion
+        supabase.rpc('get_public_tables').execute()
+        status['supabase'] = 'connected'
+    except Exception as e:
+        logger.error(f"ERREUR HEALTH CHECK: {str(e)}")
+        status['supabase'] = 'error'
+        status['supabase_error'] = str(e)
+        status['status'] = 'degraded'
+        
+    return jsonify(status)
 
 
 @app.route('/api/upload', methods=['POST'])
@@ -591,6 +607,7 @@ def get_tables():
     
     except Exception as e:
         # Si les fonctions RPC ne sont pas encore créées, fallback
+        logger.warning(f"AVERTISSEMENT API /tables: {str(e)}")
         return jsonify({
             'tables': [],
             'warning': 'Fonctions RPC non configurées. Exécutez setup_db.sql',
@@ -617,6 +634,7 @@ def get_table_columns(table_name):
         })
     
     except Exception as e:
+        logger.error(f"ERREUR API /columns: {str(e)}", exc_info=True)
         return jsonify({
             'table_name': table_name,
             'columns': [],
