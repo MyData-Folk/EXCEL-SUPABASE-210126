@@ -795,6 +795,7 @@ def import_create():
     filename = data.get('filename')
     sheet_name = data.get('sheet_name')
     table_name = data.get('table_name')
+    column_types = data.get('column_types', {})
     column_mapping = data.get('column_mapping', {})
     split_datetime = data.get('split_datetime', False)
     ignored_rows = data.get('ignored_rows', [])
