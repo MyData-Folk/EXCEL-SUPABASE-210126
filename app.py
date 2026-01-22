@@ -491,17 +491,24 @@ def dataframe_to_json_records(df):
                     clean_record[k] = value.strftime('%Y-%m-%d')
                 elif isinstance(value, pd.Timedelta):
                     clean_record[k] = str(value)
-                elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                elif isinstance(value, (int, float)):
                     # Nettoyage Inf et NaN pour les nombres
-                    if value != value or value == float('inf') or value == float('-inf'):
+                    if value != value or value == float('inf') or value == float('-inf') or pd.isna(value):
                         clean_record[k] = None
                     else:
                         clean_record[k] = value
-                elif isinstance(value, (str, bool)):
-                    clean_record[k] = value
+                elif isinstance(value, bool):
+                    clean_record[k] = bool(value)
+                elif isinstance(value, str):
+                    # Nettoyer les string des caractères nuls qui cassent Postgres
+                    clean_record[k] = value.replace('\x00', '')
                 else:
                     # Tout le reste en string
-                    clean_record[k] = str(value)
+                    val_str = str(value)
+                    if val_str.lower() in ['nan', 'nat', 'none', 'inf', '-inf']:
+                         clean_record[k] = None
+                    else:
+                         clean_record[k] = val_str
             
             # Vérification finale de sérialisation JSON pour cet enregistrement
             try:
