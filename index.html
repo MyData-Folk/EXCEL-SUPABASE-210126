@@ -606,43 +606,6 @@
                         </div>
                         <div class="mapping-container" id="mappingContainer"></div>
 
-                        <!-- Modal Aide -->
-                        <div id="aideModal" class="modal"
-                            style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); overflow-y: auto;">
-                            <div class="modal-content"
-                                style="background: var(--bg-card); margin: 5% auto; padding: 32px; border-radius: 12px; width: 80%; max-width: 800px; border: 1px solid var(--border-color); position: relative;">
-                                <button class="btn btn-secondary btn-sm"
-                                    style="position: absolute; right: 20px; top: 20px;"
-                                    onclick="toggleAide()">Fermer</button>
-                                <h1 style="color: var(--supabase-green); margin-bottom: 24px;">🚀 Guide d'utilisation
-                                </h1>
-
-                                <h3 style="margin-top: 24px;">1. Source</h3>
-                                <p>Glissez votre fichier <strong>Excel</strong> ou <strong>CSV</strong>. Choisissez
-                                    l'onglet correct et vérifiez l'aperçu.</p>
-
-                                <h3 style="margin-top: 24px;">2. Destination</h3>
-                                <p><strong>Append :</strong> Ajoutez des lignes à une table existante (votre mapping
-                                    doit correspondre aux noms de colonnes Supabase).<br>
-                                    <strong>Create :</strong> Créez une nouvelle table à partir de votre fichier.
-                                </p>
-
-                                <h3 style="margin-top: 24px;">3. Mapping et Types</h3>
-                                <p>C'est l'étape la plus importante :</p>
-                                <ul style="margin-left: 20px; margin-top: 10px;">
-                                    <li><strong>Renommer :</strong> En mode 'Create', tapez le nom souhaité pour la
-                                        colonne dans la zone de texte.</li>
-                                    <li><strong>Types :</strong> Choisissez 'Date' pour convertir les dates proprement
-                                        sans les heures inutiles.</li>
-                                    <li><strong>Découper :</strong> Cochez l'option en haut pour séparer les colonnes
-                                        'Date et Heure' en deux colonnes distinctes.</li>
-                                </ul>
-
-                                <h3 style="margin-top: 24px;">4. Import</h3>
-                                <p>Vérifiez le résumé, sauvegardez un <strong>Template</strong> si vous importez souvent
-                                    le même format, puis lancez l'import.</p>
-                            </div>
-                        </div>
                         <div class="btn-group" style="margin-top: 32px;">
                             <button class="btn btn-secondary" onclick="goToStep(2)">Precedent</button>
                             <button class="btn btn-primary" onclick="goToStep(4)">Suivant</button>
@@ -688,6 +651,42 @@
                                 l'import</button>
                         </div>
                     </section>
+                </div>
+
+                <!-- Modal Aide - Global -->
+                <div id="aideModal" class="modal"
+                    style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); overflow-y: auto;">
+                    <div class="modal-content"
+                        style="background: var(--bg-card); margin: 5% auto; padding: 32px; border-radius: 12px; width: 80%; max-width: 800px; border: 1px solid var(--border-color); position: relative;">
+                        <button class="btn btn-secondary btn-sm" style="position: absolute; right: 20px; top: 20px;"
+                            onclick="toggleAide()">Fermer</button>
+                        <h1 style="color: var(--supabase-green); margin-bottom: 24px;">🚀 Guide d'utilisation</h1>
+
+                        <h3 style="margin-top: 24px;">1. Source</h3>
+                        <p>Glissez votre fichier <strong>Excel</strong> ou <strong>CSV</strong>. Choisissez l'onglet
+                            correct et vérifiez l'aperçu.</p>
+
+                        <h3 style="margin-top: 24px;">2. Destination</h3>
+                        <p><strong>Append :</strong> Ajoutez des lignes à une table existante (votre mapping doit
+                            correspondre aux noms de colonnes Supabase).<br>
+                            <strong>Create :</strong> Créez une nouvelle table à partir de votre fichier.
+                        </p>
+
+                        <h3 style="margin-top: 24px;">3. Mapping et Types</h3>
+                        <p>C'est l'étape la plus importante :</p>
+                        <ul style="margin-left: 20px; margin-top: 10px;">
+                            <li><strong>Renommer :</strong> En mode 'Create', tapez le nom souhaité pour la colonne dans
+                                la zone de texte.</li>
+                            <li><strong>Types :</strong> Choisissez 'Date' pour convertir les dates proprement sans les
+                                heures inutiles.</li>
+                            <li><strong>Découper :</strong> Cochez l'option en haut pour séparer les colonnes 'Date et
+                                Heure' en deux colonnes distinctes.</li>
+                        </ul>
+
+                        <h3 style="margin-top: 24px;">4. Import</h3>
+                        <p>Vérifiez le résumé, sauvegardez un <strong>Template</strong> si vous importez souvent le même
+                            format, puis lancez l'import.</p>
+                    </div>
                 </div>
             </main>
         </div>
