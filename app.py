@@ -329,12 +329,21 @@ def normalize_dataframe(df, column_types=None, column_mapping=None, split_dateti
             has_time = False
             
             for val in sample_values:
+                if isinstance(val, (datetime, pd.Timestamp)):
+                    has_date = True
+                    if val.hour != 0 or val.minute != 0 or val.second != 0:
+                        has_time = True
+                    break
+                
                 if isinstance(val, (int, float)):
                     # Excel dates are numbers
-                    if 10000 < val < 60000: # Range for modern dates in Excel
-                        has_date = True
-                        if val % 1 != 0: has_time = True
-                        break
+                    try:
+                        if 10000 < val < 60000: # Range for modern dates in Excel
+                            has_date = True
+                            if val % 1 != 0: has_time = True
+                            break
+                    except TypeError:
+                        continue
                     continue
                 
                 val_str = str(val)
