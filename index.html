@@ -542,15 +542,23 @@
                         <div id="sheetSelectContainer" style="display: none; margin-top: 24px;">
                             <div class="form-group">
                                 <label class="form-label">Selectionner l'onglet (Excel)</label>
-                                <select class="form-select" id="sheetSelect">
+                                <select class="form-select" id="sheetSelect"
+                                    onchange="loadPreview(state.uploadedFile.filepath, this.value)">
                                     <option value="">Choisir un onglet...</option>
                                 </select>
                             </div>
                         </div>
                         <div id="previewContainer" style="display: none; margin-top: 24px;">
-                            <div class="card-header" style="margin-bottom: 16px;">
-                                <h3 class="card-title" style="font-size: 1rem;">Apercu des donnees</h3>
-                                <span class="badge" id="rowCountBadge"></span>
+                            <div class="card-header"
+                                style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+                                <h3 class="card-title" style="font-size: 1rem;">Aperçu des données</h3>
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <button class="btn btn-secondary btn-sm"
+                                        onclick="loadPreview(state.uploadedFile.filepath, document.getElementById('sheetSelect').value)">
+                                        <span>🔄 Rafraîchir</span>
+                                    </button>
+                                    <span class="badge" id="rowCountBadge"></span>
+                                </div>
                             </div>
                             <div class="preview-container">
                                 <table class="data-table" id="previewTable">
@@ -605,6 +613,7 @@
                             </label>
                         </div>
                         <div class="mapping-container" id="mappingContainer"></div>
+                        <datalist id="targetColumnsList"></datalist>
 
                         <div class="btn-group" style="margin-top: 32px;">
                             <button class="btn btn-secondary" onclick="goToStep(2)">Precedent</button>
@@ -722,8 +731,12 @@
             function setupEventListeners() {
                 var dropzone = document.getElementById('dropzone');
                 var fileInput = document.getElementById('fileInput');
-                if (dropzone) {
-                    dropzone.addEventListener('click', function () { fileInput.click(); });
+                if (dropzone && fileInput) {
+                    // Pour éviter le double déclenchement, on laisse le label ou le click direct gérer l'input
+                    // mais si on a besoin d'un clic sur toute la zone :
+                    dropzone.onclick = function (e) {
+                        if (e.target !== fileInput) fileInput.click();
+                    };
                     dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('dragover'); });
                     dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('dragover'); });
                     dropzone.addEventListener('drop', function (e) {
@@ -967,6 +980,12 @@
                 var mapping = state.mapping || {};
                 var columnTypes = state.columnTypes || {};
 
+                // Mettre à jour la datalist globale
+                var datalist = document.getElementById('targetColumnsList');
+                if (datalist) {
+                    datalist.innerHTML = targetHeaders.map(function (h) { return '<option value="' + h + '">'; }).join('');
+                }
+
                 container.innerHTML = sourceHeaders.map(function (header, index) {
                     var normalizedHeader = snakeCase(header);
                     var targetCol = mapping[header];
@@ -975,24 +994,22 @@
                         if (!targetCol && index < targetHeaders.length && state.importMode === 'create') { targetCol = targetHeaders[index]; }
                     }
 
-                    mapping[header] = targetCol || '';
+                    mapping[header] = targetCol || (state.importMode === 'create' ? normalizedHeader : '');
                     if (!columnTypes[header]) columnTypes[header] = 'text';
 
-                    var destinationHTML = '';
-                    if (state.importMode === 'append') {
-                        destinationHTML = '<select class="form-select" style="padding: 8px;" onchange="updateMapping(\'' + header + '\', this.value)">' +
-                            '<option value="">-- Ignorer --</option>' +
-                            targetHeaders.map(function (t) { return '<option value="' + t + '" ' + (t === targetCol ? 'selected' : '') + '>' + t + '</option>'; }).join('') +
-                            '</select>';
-                    } else {
-                        destinationHTML = '<input type="text" class="form-input" style="padding: 8px;" placeholder="Nom de colonne..." value="' + (targetCol || normalizedHeader) + '" oninput="updateMapping(\'' + header + '\', this.value)">';
-                        if (!mapping[header]) mapping[header] = normalizedHeader;
-                    }
+                    var destinationHTML = '<div style="position: relative;">' +
+                        '<input type="text" class="form-input" style="padding: 8px;" ' +
+                        'list="targetColumnsList" ' +
+                        'placeholder="Choisir ou renommer..." ' +
+                        'value="' + mapping[header] + '" ' +
+                        'oninput="updateMapping(\'' + header + '\', this.value)" ' +
+                        'onfocus="this.select()">' +
+                        '</div>';
 
                     return '<div class="mapping-row" style="display: grid; grid-template-columns: 1.2fr 40px 1.5fr 120px; gap: 16px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 8px; align-items: center;">' +
                         '<div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><div class="form-label" title="' + header + '">Source: ' + header + '</div></div>' +
                         '<div style="text-align: center; color: var(--supabase-green);">-></div>' +
-                        '<div><label class="form-label">Destination (Renommer)</label>' + destinationHTML + '</div>' +
+                        '<div><label class="form-label">Destination</label>' + destinationHTML + '</div>' +
                         '<div><label class="form-label">Type</label><select class="form-select" style="padding: 8px;" onchange="updateColumnType(\'' + header + '\', this.value)"><option value="text" ' + (columnTypes[header] === 'text' ? 'selected' : '') + '>Texte</option><option value="numeric" ' + (columnTypes[header] === 'numeric' ? 'selected' : '') + '>Numerique</option><option value="date" ' + (columnTypes[header] === 'date' ? 'selected' : '') + '>Date</option></select></div></div>';
                 }).join('');
                 state.mapping = mapping;
