@@ -420,8 +420,7 @@ def dataframe_to_json_records(df):
                 k = str(key)
                 
                 # Gérer les valeurs
-                if pd.isna(value):
-                    # Gère NaN, None, et NaT (Not a Time)
+                if value is None or (isinstance(value, float) and (pd.isna(value) or value != value)):
                     clean_record[k] = None
                 elif isinstance(value, (pd.Timestamp, datetime)):
                     # L'utilisateur ne veut pas l'heure, juste YYYY-MM-DD
@@ -430,7 +429,7 @@ def dataframe_to_json_records(df):
                     clean_record[k] = str(value)
                 elif isinstance(value, (int, float)) and not isinstance(value, bool):
                     # Nettoyage Inf et NaN pour les nombres
-                    if value == float('inf') or value == float('-inf'):
+                    if value != value or value == float('inf') or value == float('-inf'):
                         clean_record[k] = None
                     else:
                         clean_record[k] = value
@@ -540,7 +539,13 @@ def upload_file():
         
         elif file_ext == 'csv':
             # Lire le CSV
-            df = pd.read_csv(file_path)
+            # Lire le CSV avec gestion des lignes malformées
+            try:
+                # Essai 1: lecture standard
+                df = pd.read_csv(file_path, on_bad_lines='skip', encoding='utf-8')
+            except UnicodeDecodeError:
+                # Essai 2: encoding latin-1
+                df = pd.read_csv(file_path, on_bad_lines='skip', encoding='latin-1')
             df.columns = [str(c).strip() for c in df.columns]
             metadata['headers'] = list(df.columns)
             metadata['preview'] = dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS))
@@ -581,10 +586,15 @@ def preview_file():
                 read_params['header'] = int(header_row)
             df = pd.read_excel(file_path, **read_params)
         elif file_ext == 'csv':
-            read_params = {}
+            read_params = {'on_bad_lines': 'skip'}
             if header_row is not None:
                 read_params['header'] = int(header_row)
-            df = pd.read_csv(file_path, **read_params)
+            
+            try:
+                df = pd.read_csv(file_path, **read_params)
+            except UnicodeDecodeError:
+                 read_params['encoding'] = 'latin-1'
+                 df = pd.read_csv(file_path, **read_params)
         
         # Toujours convertir les colonnes en string
         df.columns = [str(c).strip() for c in df.columns]
@@ -636,7 +646,13 @@ def process_file():
             else:
                 df = pd.read_excel(file_path)
         elif file_ext == 'csv':
-            df = pd.read_csv(file_path)
+            # Lire le CSV avec gestion des lignes malformées
+            try:
+                # Essai 1: lecture standard
+                df = pd.read_csv(file_path, on_bad_lines='skip', encoding='utf-8')
+            except UnicodeDecodeError:
+                # Essai 2: encoding latin-1
+                df = pd.read_csv(file_path, on_bad_lines='skip', encoding='latin-1')
         
         # Appliquer la normalisation
         df_normalized = normalize_dataframe(df, column_types, None, split_datetime)
@@ -747,10 +763,15 @@ def import_append():
                 read_params['header'] = int(header_row)
             df = pd.read_excel(file_path, **read_params)
         elif file_ext == 'csv':
-            read_params = {}
+            read_params = {'on_bad_lines': 'skip'}
             if header_row is not None:
                 read_params['header'] = int(header_row)
-            df = pd.read_csv(file_path, **read_params)
+            
+            try:
+                df = pd.read_csv(file_path, **read_params)
+            except UnicodeDecodeError:
+                 read_params['encoding'] = 'latin-1'
+                 df = pd.read_csv(file_path, **read_params)
         
         # Filtrer les lignes ignorées
         ignored_rows = data.get('ignored_rows', [])
@@ -836,10 +857,15 @@ def import_create():
                 read_params['header'] = int(header_row)
             df = pd.read_excel(file_path, **read_params)
         elif file_ext == 'csv':
-            read_params = {}
+            read_params = {'on_bad_lines': 'skip'}
             if header_row is not None:
                 read_params['header'] = int(header_row)
-            df = pd.read_csv(file_path, **read_params)
+            
+            try:
+                df = pd.read_csv(file_path, **read_params)
+            except UnicodeDecodeError:
+                 read_params['encoding'] = 'latin-1'
+                 df = pd.read_csv(file_path, **read_params)
 
         # Filtrer les lignes ignorées
         if ignored_rows:
