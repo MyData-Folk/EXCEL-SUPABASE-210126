@@ -1018,7 +1018,10 @@
                 btn.disabled = false;
                 btn.textContent = 'Lancer l\'import';
                 var res = document.getElementById('importResult');
-                res.innerHTML = '<div class="message message-error"><strong>Erreur lors de l\'import</strong><p>' + error + '</p></div>';
+
+                var displayMsg = typeof error === 'object' ? JSON.stringify(error, null, 2) : error;
+
+                res.innerHTML = '<div class="message message-error"><strong>Erreur lors de l\'import</strong><pre style="white-space: pre-wrap; font-size: 11px; margin-top: 5px; background: rgba(0,0,0,0.05); padding: 5px;">' + displayMsg + '</pre></div>';
                 res.style.display = 'block';
             }
 
