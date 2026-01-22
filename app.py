@@ -119,6 +119,8 @@ def snake_case(text):
     if not text:
         return text
     
+    text = str(text)
+    
     # Supprimer les caractères spéciaux et accents
     import unicodedata
     text = unicodedata.normalize('NFD', text)
@@ -390,7 +392,7 @@ def dataframe_to_json_records(df):
         for key, value in record.items():
             if pd.isna(value):
                 record[key] = None
-            elif isinstance(value, (pd.Timestamp, pd.Timedelta)):
+            elif isinstance(value, (pd.Timestamp, pd.Timedelta, datetime)):
                 record[key] = str(value)
             elif isinstance(value, (int, float)) and not isinstance(value, bool):
                 # Vérifier si c'est un NaN masqué
@@ -477,15 +479,18 @@ def upload_file():
             # Charger le premier onglet par défaut
             if xl.sheet_names:
                 df = pd.read_excel(file_path, sheet_name=xl.sheet_names[0])
+                # Toujours convertir les colonnes en string
+                df.columns = [str(c).strip() for c in df.columns]
                 metadata['headers'] = list(df.columns)
-                metadata['preview'] = df.head(MAX_PREVIEW_ROWS).to_dict(orient='records')
+                metadata['preview'] = dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS))
                 metadata['total_rows'] = len(df)
         
         elif file_ext == 'csv':
             # Lire le CSV
             df = pd.read_csv(file_path)
+            df.columns = [str(c).strip() for c in df.columns]
             metadata['headers'] = list(df.columns)
-            metadata['preview'] = df.head(MAX_PREVIEW_ROWS).to_dict(orient='records')
+            metadata['preview'] = dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS))
             metadata['total_rows'] = len(df)
         
         return jsonify(metadata)
@@ -525,6 +530,9 @@ def preview_file():
         elif file_ext == 'csv':
             df = pd.read_csv(file_path)
         
+        # Toujours convertir les colonnes en string
+        df.columns = [str(c).strip() for c in df.columns]
+        
         # Normaliser les colonnes
         normalized_cols = {col: snake_case(col) for col in df.columns}
         
@@ -532,7 +540,7 @@ def preview_file():
             'headers': list(df.columns),
             'normalized_headers': list(normalized_cols.values()),
             'original_to_normalized': normalized_cols,
-            'preview': df.head(MAX_PREVIEW_ROWS).to_dict(orient='records'),
+            'preview': dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS)),
             'total_rows': len(df),
             'total_columns': len(df.columns)
         })
@@ -684,6 +692,9 @@ def import_append():
         elif file_ext == 'csv':
             df = pd.read_csv(file_path)
         
+        # Toujours convertir les colonnes en string
+        df.columns = [str(c).strip() for c in df.columns]
+        
         # Normaliser (types, mapping, split)
         df_normalized = normalize_dataframe(df, column_types, column_mapping, split_datetime)
         
@@ -751,6 +762,9 @@ def import_create():
                 df = pd.read_excel(file_path)
         elif file_ext == 'csv':
             df = pd.read_csv(file_path)
+        
+        # Toujours convertir les colonnes en string
+        df.columns = [str(c).strip() for c in df.columns]
         
         # Normaliser (types, mapping, split)
         df_normalized = normalize_dataframe(df, column_types, column_mapping, split_datetime)
