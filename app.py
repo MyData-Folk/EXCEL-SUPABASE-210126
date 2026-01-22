@@ -594,7 +594,7 @@ def upload_file():
             
             # Charger le premier onglet par défaut
             if xl.sheet_names:
-                df = pd.read_excel(file_path, sheet_name=xl.sheet_names[0])
+                df = pd.read_excel(file_path, sheet_name=xl.sheet_names[0], header=None)
                 # Toujours convertir les colonnes en string
                 df.columns = [str(c).strip() for c in df.columns]
                 metadata['headers'] = list(df.columns)
@@ -602,8 +602,8 @@ def upload_file():
                 metadata['total_rows'] = len(df)
         
         elif file_ext == 'csv':
-            # Lire le CSV de manière robuste
-            df = read_csv_robust(file_path)
+            # Lire le CSV de manière robuste, sans header par défaut
+            df = read_csv_robust(file_path, header=None)
             df.columns = [str(c).strip() for c in df.columns]
             metadata['headers'] = list(df.columns)
             metadata['preview'] = dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS))
@@ -642,11 +642,15 @@ def preview_file():
             read_params = {'sheet_name': sheet_name} if sheet_name else {}
             if header_row is not None:
                 read_params['header'] = int(header_row)
+            else:
+                read_params['header'] = None
             df = pd.read_excel(file_path, **read_params)
         elif file_ext == 'csv':
             read_params = {'on_bad_lines': 'skip'}
             if header_row is not None:
                 read_params['header'] = int(header_row)
+            else:
+                read_params['header'] = None
             
             df = read_csv_robust(file_path, **read_params)
         
