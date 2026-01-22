@@ -1108,10 +1108,10 @@
                         var statusText = document.getElementById('statusText');
                         if (!statusDot || !statusText) return;
 
-                        if (data.supabase_status === 'connected') {
+                        if (data.supabase === 'connected') {
                             statusDot.className = 'status-dot connected';
                             statusText.textContent = 'Supabase: Connecte';
-                        } else if (data.supabase_status === 'degraded') {
+                        } else if (data.status === 'degraded') {
                             statusDot.className = 'status-dot degraded';
                             statusText.textContent = 'Supabase: Degrade';
                         } else {
