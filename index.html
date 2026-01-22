@@ -732,10 +732,12 @@
                 var dropzone = document.getElementById('dropzone');
                 var fileInput = document.getElementById('fileInput');
                 if (dropzone && fileInput) {
-                    // Pour éviter le double déclenchement, on laisse le label ou le click direct gérer l'input
-                    // mais si on a besoin d'un clic sur toute la zone :
                     dropzone.onclick = function (e) {
-                        if (e.target !== fileInput) fileInput.click();
+                        if (e.target !== fileInput) {
+                            fileInput.click();
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
                     };
                     dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('dragover'); });
                     dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('dragover'); });
@@ -933,6 +935,7 @@
                                 state.targetTables.map(function (t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
                             if (currentVal && state.targetTables.includes(currentVal)) {
                                 select.value = currentVal;
+                                loadTableColumns(currentVal); // Forcer le chargement des colonnes pour la datalist
                             }
                         }
                     })
@@ -1036,6 +1039,9 @@
 
             function setupStep4() {
                 var targetTable = state.importMode === 'append' ? document.getElementById('existingTableSelect').value : document.getElementById('newTableName').value;
+                var sheetSelect = document.getElementById('sheetSelect');
+                var sheetName = sheetSelect ? sheetSelect.value : null;
+
                 document.getElementById('summaryRows').textContent = state.previewData ? state.previewData.total_rows : 0;
                 document.getElementById('summaryColumns').textContent = state.sourceHeaders.length;
                 document.getElementById('summaryTable').textContent = targetTable;
