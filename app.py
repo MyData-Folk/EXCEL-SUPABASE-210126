@@ -368,9 +368,10 @@ def clean_text(value):
     return value_str if value_str else None
 
 
-def normalize_dataframe(df, column_types=None, column_mapping=None, split_datetime=False):
+def normalize_dataframe(df, column_types=None, column_mapping=None, split_datetime=False, hotel_id=None):
     """
     Normalise un DataFrame selon les règles de typage, mapping et split.
+    Ajoute hotel_id si fourni.
     """
     df = df.copy()
     
@@ -458,6 +459,11 @@ def normalize_dataframe(df, column_types=None, column_mapping=None, split_dateti
                 
                 # Supprimer la colonne originale
                 df = df.drop(columns=[col])
+    
+    # 4. Ajouter hotel_id si présent
+    if hotel_id:
+        # On l'ajoute au début pour la visibilité
+        df.insert(0, 'hotel_id', hotel_id)
     
     # Remplacer les valeurs NaN/None par None
     df = df.where(pd.notnull(df), None)
@@ -715,7 +721,7 @@ def process_file():
             df = read_csv_robust(file_path)
         
         # Appliquer la normalisation
-        df_normalized = normalize_dataframe(df, column_types, None, split_datetime)
+        df_normalized = normalize_dataframe(df, column_types, None, split_datetime, None)
         
         # Préparer les données
         records = dataframe_to_json_records(df_normalized)
@@ -899,6 +905,7 @@ def import_create():
     column_mapping = data.get('column_mapping', {})
     split_datetime = data.get('split_datetime', False)
     ignored_rows = data.get('ignored_rows', [])
+    hotel_id = data.get('hotel_id') # Nouveau
     header_row = data.get('header_row') # Nouveau
     
     if not all([filename, table_name]):
@@ -947,7 +954,7 @@ def import_create():
         df.columns = [str(c).strip() for c in df.columns]
         
         # Normaliser (types, mapping, split)
-        df_normalized = normalize_dataframe(df, column_types, column_mapping, split_datetime)
+        df_normalized = normalize_dataframe(df, column_types, column_mapping, split_datetime, hotel_id)
         
         # Générer le schéma SQL
         columns_sql = []
