@@ -741,6 +741,15 @@ def import_append():
         elif file_ext == 'csv':
             df = pd.read_csv(file_path)
         
+        # Filtrer les lignes ignorées
+        ignored_rows = data.get('ignored_rows', [])
+        if ignored_rows:
+            try:
+                ignored_indices = [int(i) for i in ignored_rows]
+                df = df.drop(index=ignored_indices, errors='ignore').reset_index(drop=True)
+            except Exception as fe:
+                logger.warning(f"Erreur lors du filtrage des lignes: {str(fe)}")
+        
         # Toujours convertir les colonnes en string
         df.columns = [str(c).strip() for c in df.columns]
         
@@ -786,9 +795,9 @@ def import_create():
     filename = data.get('filename')
     sheet_name = data.get('sheet_name')
     table_name = data.get('table_name')
-    column_types = data.get('column_types', {})
     column_mapping = data.get('column_mapping', {})
     split_datetime = data.get('split_datetime', False)
+    ignored_rows = data.get('ignored_rows', [])
     
     if not all([filename, table_name]):
         return jsonify({'error': 'Paramètres requis: filename, table_name'}), 400
@@ -811,6 +820,14 @@ def import_create():
                 df = pd.read_excel(file_path)
         elif file_ext == 'csv':
             df = pd.read_csv(file_path)
+
+        # Filtrer les lignes ignorées
+        if ignored_rows:
+            try:
+                ignored_indices = [int(i) for i in ignored_rows]
+                df = df.drop(index=ignored_indices, errors='ignore').reset_index(drop=True)
+            except Exception as fe:
+                logger.warning(f"Erreur lors du filtrage des lignes: {str(fe)}")
         
         # Toujours convertir les colonnes en string
         df.columns = [str(c).strip() for c in df.columns]

@@ -585,7 +585,8 @@
                         <div id="tab-append">
                             <div class="form-group">
                                 <label class="form-label">Table existante</label>
-                                <select class="form-select" id="existingTableSelect" onchange="loadTableColumns()">
+                                <select class="form-select" id="existingTableSelect"
+                                    onchange="loadTableColumns(this.value)">
                                     <option value="">Selectionner une table...</option>
                                 </select>
                             </div>
@@ -718,7 +719,8 @@
                 mapping: {},
                 columnTypes: {},
                 importMode: 'append',
-                templates: []
+                templates: [],
+                ignoredRows: []
             };
             var API_BASE = '/api';
 
@@ -777,9 +779,9 @@
                         displayUploadedFile(data);
                         if (data.sheets && data.sheets.length > 0) {
                             displaySheetSelect(data.sheets);
-                            loadPreview(data.filepath, data.sheets[0]);
+                            window.loadPreview(data.filepath, data.sheets[0]);
                         } else {
-                            loadPreview(data.filepath, null);
+                            window.loadPreview(data.filepath, null);
                         }
                     })
                     .catch(function (error) {
@@ -827,7 +829,8 @@
                 }
             }
 
-            function loadPreview(filename, sheetName) {
+            window.loadPreview = function (filename, sheetName) {
+                if (!filename) return;
                 fetch(API_BASE + '/preview', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -838,22 +841,41 @@
                         state.previewData = data;
                         state.sourceHeaders = data.headers;
                         state.sourceColumns = data.normalized_headers;
+                        state.ignoredRows = [];
                         displayPreview(data);
                     })
                     .catch(function (error) { alert('Erreur: ' + error.message); });
             }
 
             function displayPreview(data) {
+                if (!data) return;
                 document.getElementById('previewContainer').style.display = 'block';
-                document.getElementById('rowCountBadge').textContent = data.total_rows + ' lignes';
+                var ignoredCount = state.ignoredRows.length;
+                var effectiveRows = data.total_rows - ignoredCount;
+                var badgeText = data.total_rows + ' lignes' + (ignoredCount > 0 ? ' (' + effectiveRows + ' apres filtrage)' : '');
+                document.getElementById('rowCountBadge').textContent = badgeText;
                 var thead = document.getElementById('previewTableHead');
                 var tbody = document.getElementById('previewTableBody');
                 if (thead && tbody) {
-                    thead.innerHTML = '<tr>' + data.headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
-                    tbody.innerHTML = data.preview.map(function (row) {
-                        return '<tr>' + data.headers.map(function (h) { return '<td>' + (row[h] || '') + '</td>'; }).join('') + '</tr>';
+                    thead.innerHTML = '<tr><th>Action</th>' + data.headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+                    tbody.innerHTML = data.preview.map(function (row, idx) {
+                        var isIgnored = state.ignoredRows.includes(idx);
+                        var rowStyle = isIgnored ? 'opacity: 0.5; text-decoration: line-through; background: rgba(0,0,0,0.05);' : '';
+                        return '<tr style="' + rowStyle + '">' +
+                            '<td><button class="btn btn-secondary btn-sm" style="padding: 2px 8px;" onclick="toggleIgnoreRow(' + idx + ')">' + (isIgnored ? 'Restaurer' : 'Supprimer') + '</button></td>' +
+                            data.headers.map(function (h) { return '<td>' + (row[h] || '') + '</td>'; }).join('') + '</tr>';
                     }).join('');
                 }
+            }
+
+            window.toggleIgnoreRow = function (idx) {
+                var index = state.ignoredRows.indexOf(idx);
+                if (index > -1) {
+                    state.ignoredRows.splice(index, 1);
+                } else {
+                    state.ignoredRows.push(idx);
+                }
+                displayPreview(state.previewData);
             }
 
             window.resetAll = function () {
@@ -1062,7 +1084,8 @@
                     table_name: targetTable,
                     column_mapping: state.mapping,
                     column_types: state.columnTypes,
-                    split_datetime: splitDatetime
+                    split_datetime: splitDatetime,
+                    ignored_rows: state.ignoredRows
                 };
 
                 var btn = document.getElementById('importBtn');
@@ -1126,8 +1149,32 @@
                     return;
                 }
                 container.innerHTML = state.templates.map(function (t) {
-                    return '<li class="template-item" onclick="applyTemplate(\'' + t.id + '\')"><div class="template-item-name">' + t.name + '</div><div class="template-item-table">' + (t.target_table || 'N/A') + '</div></li>';
+                    return '<li class="template-item" style="display: flex; justify-content: space-between; align-items: center;">' +
+                        '<div style="flex: 1; cursor: pointer;" onclick="applyTemplate(\'' + t.id + '\')">' +
+                        '<div class="template-item-name">' + t.name + '</div>' +
+                        '<div class="template-item-table">' + (t.target_table || 'N/A') + '</div>' +
+                        '</div>' +
+                        '<button class="btn btn-secondary btn-sm" style="background: transparent; border: none; font-size: 1.2rem; padding: 4px 8px;" onclick="deleteTemplate(\'' + t.id + '\', event)">🗑️</button>' +
+                        '</li>';
                 }).join('');
+            }
+
+            window.deleteTemplate = function (templateId, event) {
+                if (event) event.stopPropagation();
+                if (!confirm('Supprimer ce modele ?')) return;
+
+                fetch(API_BASE + '/templates/' + templateId, {
+                    method: 'DELETE'
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        if (data.success) {
+                            loadTemplates();
+                        } else {
+                            alert('Erreur: ' + (data.error || 'Inconnue'));
+                        }
+                    })
+                    .catch(function (error) { alert('Erreur: ' + error.message); });
             }
 
             window.saveTemplate = function () {
