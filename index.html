@@ -543,7 +543,7 @@
                             <div class="form-group">
                                 <label class="form-label">Selectionner l'onglet (Excel)</label>
                                 <select class="form-select" id="sheetSelect"
-                                    onchange="window.state.headerRowIndex = null; window.loadPreview(window.state.uploadedFile.filepath, this.value)">
+                                    onchange="window.state.headerRowIndex = null; window.state.ignoredColumns = []; window.loadPreview(window.state.uploadedFile.filepath, this.value)">
                                     <option value="">Choisir un onglet...</option>
                                 </select>
                             </div>
@@ -721,6 +721,7 @@
                 importMode: 'append',
                 templates: [],
                 ignoredRows: [],
+                ignoredColumns: [],
                 headerRowIndex: null
             };
             var state = window.state;
@@ -865,21 +866,47 @@
                 var thead = document.getElementById('previewTableHead');
                 var tbody = document.getElementById('previewTableBody');
                 if (thead && tbody) {
-                    thead.innerHTML = '<tr><th>Actions</th>' + data.headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+                    thead.innerHTML = '<tr><th>Actions</th>' + data.headers.map(function (h) {
+                        var isIgnored = state.ignoredColumns.includes(h);
+                        var style = isIgnored ? 'text-decoration: line-through; opacity: 0.5;' : '';
+                        var icon = isIgnored ? '➕' : '🗑️'; // Plus to restore, Trash to delete
+                        return '<th style="' + style + '">' +
+                            '<div style="display: flex; align-items: center; justify-content: space-between; gap: 5px;">' +
+                            '<span>' + h + '</span>' +
+                            '<button class="btn btn-sm btn-light" style="padding: 0 4px;" onclick="window.toggleIgnoreColumn(\'' + h.replace(/'/g, "\\'") + '\')">' + icon + '</button>' +
+                            '</div>' +
+                            '</th>';
+                    }).join('') + '</tr>';
+
                     tbody.innerHTML = data.preview.map(function (row, idx) {
-                        var isIgnored = state.ignoredRows.includes(idx);
+                        var isIgnoredRow = state.ignoredRows.includes(idx);
                         var isHeader = state.headerRowIndex === idx;
-                        var rowStyle = isIgnored ? 'opacity: 0.5; text-decoration: line-through; background: rgba(0,0,0,0.05);' : '';
+                        var rowStyle = isIgnoredRow ? 'opacity: 0.5; text-decoration: line-through; background: rgba(0,0,0,0.05);' : '';
                         if (isHeader) rowStyle = 'background: rgba(var(--supabase-green-rgb), 0.1); font-weight: bold;';
 
                         return '<tr style="' + rowStyle + '">' +
                             '<td style="white-space: nowrap;">' +
-                            '<button class="btn btn-secondary btn-sm" style="padding: 2px 8px; margin-right: 4px;" onclick="toggleIgnoreRow(' + idx + ')">' + (isIgnored ? 'Restaurer' : 'Ignorer') + '</button>' +
+                            '<button class="btn btn-secondary btn-sm" style="padding: 2px 8px; margin-right: 4px;" onclick="toggleIgnoreRow(' + idx + ')">' + (isIgnoredRow ? 'Restaurer' : 'Ignorer') + '</button>' +
                             '<button class="btn btn-primary btn-sm" style="padding: 2px 8px;" onclick="useAsHeader(' + idx + ')">En-têtes</button>' +
                             '</td>' +
-                            data.headers.map(function (h) { return '<td>' + (row[h] || '') + '</td>'; }).join('') + '</tr>';
+                            data.headers.map(function (h) {
+                                var isIgnoredCol = state.ignoredColumns.includes(h);
+                                var cellStyle = isIgnoredCol ? 'opacity: 0.3; background: #f0f0f0;' : '';
+                                return '<td style="' + cellStyle + '">' + (row[h] || '') + '</td>';
+                            }).join('') + '</tr>';
                     }).join('');
                 }
+            }
+
+            window.toggleIgnoreColumn = function (colName) {
+                var idx = state.ignoredColumns.indexOf(colName);
+                if (idx === -1) {
+                    state.ignoredColumns.push(colName);
+                } else {
+                    state.ignoredColumns.splice(idx, 1);
+                }
+                // Réafficher les données sans recharger
+                displayPreview(state.previewData);
             }
 
             window.useAsHeader = function (idx) {
@@ -889,6 +916,7 @@
                 var newH = currentH + idx + 1;
                 state.headerRowIndex = newH;
                 state.ignoredRows = []; // Crucial: les index changent
+                state.ignoredColumns = []; // Reset colonnes car les noms changent
                 var sheet = document.getElementById('sheetSelect') ? document.getElementById('sheetSelect').value : null;
                 window.loadPreview(state.uploadedFile.filepath, sheet, newH);
             }
@@ -1110,7 +1138,9 @@
                     column_mapping: state.mapping,
                     column_types: state.columnTypes,
                     split_datetime: splitDatetime,
+                    split_datetime: splitDatetime,
                     ignored_rows: state.ignoredRows,
+                    ignored_columns: state.ignoredColumns,
                     header_row: state.headerRowIndex
                 };
 

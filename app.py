@@ -781,6 +781,14 @@ def import_append():
                 df = df.drop(index=ignored_indices, errors='ignore').reset_index(drop=True)
             except Exception as fe:
                 logger.warning(f"Erreur lors du filtrage des lignes: {str(fe)}")
+
+        # Filtrer les colonnes ignorées
+        ignored_columns = data.get('ignored_columns', [])
+        if ignored_columns:
+             try:
+                df = df.drop(columns=ignored_columns, errors='ignore')
+             except Exception as ce:
+                logger.warning(f"Erreur lors du filtrage des colonnes: {str(ce)}")
         
         # Toujours convertir les colonnes en string
         df.columns = [str(c).strip() for c in df.columns]
@@ -874,6 +882,14 @@ def import_create():
                 df = df.drop(index=ignored_indices, errors='ignore').reset_index(drop=True)
             except Exception as fe:
                 logger.warning(f"Erreur lors du filtrage des lignes: {str(fe)}")
+        
+        # Filtrer les colonnes ignorées
+        ignored_columns = data.get('ignored_columns', [])
+        if ignored_columns:
+             try:
+                df = df.drop(columns=ignored_columns, errors='ignore')
+             except Exception as ce:
+                logger.warning(f"Erreur lors du filtrage des colonnes: {str(ce)}")
         
         # Toujours convertir les colonnes en string
         df.columns = [str(c).strip() for c in df.columns]
