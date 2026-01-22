@@ -394,9 +394,9 @@ def normalize_dataframe(df, column_types=None, column_mapping=None, split_dateti
         if valid_mapping:
             df = df[list(valid_mapping.keys())].rename(columns=valid_mapping)
         else:
-            # Si mapping vide et mode append, on risque d'envoyer des colonnes inexistantes
-            # On laisse passer mais on logge
-            logger.warning("normalize_dataframe: valid_mapping est vide")
+            # Si aucune colonne ne correspond au mapping (ex: mismatch de clés), on logge et on force snake_case
+            logger.warning(f"normalize_dataframe: valid_mapping est vide. Keys Frontend: {list(column_mapping.keys())}, Keys DF: {list(df.columns)}")
+            df.columns = [snake_case(col) for col in df.columns]
     else:
         # Snake_case par défaut pour toutes les colonnes
         df.columns = [snake_case(col) for col in df.columns]
