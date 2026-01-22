@@ -917,8 +917,17 @@
             window.useAsHeader = function (idx) {
                 if (!confirm('Utiliser cette ligne comme noms de colonnes ? (Cela rechargera le fichier)')) return;
                 // Calculer l'index absolu dans le fichier original
-                var currentH = state.headerRowIndex || 0;
-                var newH = currentH + idx + 1;
+                var currentH = state.headerRowIndex;
+                var newH;
+
+                if (currentH === null) {
+                    // Mode "Raw" (header=None) : l'index affiché est l'index absolu
+                    newH = idx;
+                } else {
+                    // Mode avec header existant : l'index 0 correspond à la ligne suivant le header actuel
+                    newH = currentH + idx + 1;
+                }
+
                 state.headerRowIndex = newH;
                 state.ignoredRows = []; // Crucial: les index changent
                 state.ignoredColumns = []; // Reset colonnes car les noms changent
