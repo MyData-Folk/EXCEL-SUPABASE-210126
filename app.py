@@ -286,33 +286,39 @@ def clean_text(value):
     return value_str if value_str else None
 
 
-def normalize_dataframe(df, column_types=None, split_datetime=False):
+def normalize_dataframe(df, column_types=None, column_mapping=None, split_datetime=False):
     """
-    Normalise un DataFrame selon les règles de typage.
-    
-    Args:
-        df: DataFrame Pandas à normaliser
-        column_types: Dict {colonne: type} ('date', 'numeric', 'text')
-        split_datetime: Si True, sépare les colonnes datetime en date_ et heure_
-    
-    Returns:
-        DataFrame normalisé
+    Normalise un DataFrame selon les règles de typage, mapping et split.
     """
-    if column_types is None:
-        column_types = {}
-    
     df = df.copy()
     
-    # Normaliser les noms de colonnes en snake_case
-    df.columns = [snake_case(col) for col in df.columns]
-    
-    # Si split_datetime, détecter et séparer les colonnes datetime
-    if split_datetime:
-        new_columns = {}
-        for col in df.columns:
-            if 'date' in col.lower() and col not in df.columns:
+    # 1. Appliquer les types forcés sur les noms ORIGINAUX
+    if column_types:
+        for col, col_type in column_types.items():
+            if col not in df.columns:
                 continue
             
+            if col_type == 'date':
+                df[col] = df[col].apply(parse_date)
+            elif col_type == 'numeric':
+                df[col] = df[col].apply(clean_number)
+            elif col_type == 'text':
+                df[col] = df[col].apply(clean_text)
+    
+    # 2. Appliquer le mapping des colonnes ou snake_case par défaut
+    if column_mapping:
+        # On ne garde que les colonnes mappées qui existent dans le DF
+        valid_mapping = {k: v for k, v in column_mapping.items() if v and k in df.columns}
+        if valid_mapping:
+            df = df[list(valid_mapping.keys())].rename(columns=valid_mapping)
+    else:
+        # Snake_case par défaut pour toutes les colonnes
+        df.columns = [snake_case(col) for col in df.columns]
+
+    # 3. Si split_datetime, détecter et séparer les colonnes temporelles
+    if split_datetime:
+        cols_to_process = list(df.columns)
+        for col in cols_to_process:
             # Vérifier si la colonne contient des timestamps
             sample_values = df[col].dropna().head(10)
             if sample_values.empty:
@@ -324,22 +330,25 @@ def normalize_dataframe(df, column_types=None, split_datetime=False):
             
             for val in sample_values:
                 if isinstance(val, (int, float)):
-                    has_date = True
-                    if val % 1 != 0:
-                        has_time = True
-                    break
+                    # Excel dates are numbers
+                    if 10000 < val < 60000: # Range for modern dates in Excel
+                        has_date = True
+                        if val % 1 != 0: has_time = True
+                        break
+                    continue
                 
                 val_str = str(val)
-                if ' ' in val_str and ':' in val_str:
+                # Formats courants: 2024-01-01 12:00:00 or 01/01/2024 12:00
+                if (' ' in val_str or 'T' in val_str) and (':' in val_str):
                     has_date = True
                     has_time = True
                     break
                 elif '/' in val_str or '-' in val_str:
-                    has_date = True
+                    if len(val_str) > 6: has_date = True
             
-            if has_date:
-                date_col = f"date_{col}" if not col.startswith('date_') else col
-                time_col = f"heure_{col}" if not col.startswith('heure_') else None
+            if has_date and has_time:
+                date_col = f"date_{col}"
+                time_col = f"heure_{col}"
                 
                 # Séparer les valeurs
                 dates = []
@@ -350,23 +359,10 @@ def normalize_dataframe(df, column_types=None, split_datetime=False):
                     heures.append(h)
                 
                 df[date_col] = dates
-                if time_col:
-                    df[time_col] = heures
+                df[time_col] = heures
                 
                 # Supprimer la colonne originale
                 df = df.drop(columns=[col])
-    
-    # Appliquer les types forcés
-    for col, col_type in column_types.items():
-        if col not in df.columns:
-            continue
-        
-        if col_type == 'date':
-            df[col] = df[col].apply(parse_date)
-        elif col_type == 'numeric':
-            df[col] = df[col].apply(clean_number)
-        elif col_type == 'text':
-            df[col] = df[col].apply(clean_text)
     
     # Remplacer les valeurs NaN/None par None
     df = df.where(pd.notnull(df), None)
@@ -570,7 +566,7 @@ def process_file():
             df = pd.read_csv(file_path)
         
         # Appliquer la normalisation
-        df_normalized = normalize_dataframe(df, column_types, split_datetime)
+        df_normalized = normalize_dataframe(df, column_types, None, split_datetime)
         
         # Préparer les données
         records = dataframe_to_json_records(df_normalized)
@@ -679,12 +675,8 @@ def import_append():
         elif file_ext == 'csv':
             df = pd.read_csv(file_path)
         
-        # Normaliser
-        df_normalized = normalize_dataframe(df, column_types, split_datetime)
-        
-        # Appliquer le mapping des colonnes
-        if column_mapping:
-            df_normalized = df_normalized.rename(columns=column_mapping)
+        # Normaliser (types, mapping, split)
+        df_normalized = normalize_dataframe(df, column_types, column_mapping, split_datetime)
         
         # Convertir en records
         records = dataframe_to_json_records(df_normalized)
@@ -751,12 +743,8 @@ def import_create():
         elif file_ext == 'csv':
             df = pd.read_csv(file_path)
         
-        # Normaliser
-        df_normalized = normalize_dataframe(df, column_types, split_datetime)
-        
-        # Appliquer le mapping des colonnes
-        if column_mapping:
-            df_normalized = df_normalized.rename(columns=column_mapping)
+        # Normaliser (types, mapping, split)
+        df_normalized = normalize_dataframe(df, column_types, column_mapping, split_datetime)
         
         # Générer le schéma SQL
         columns_sql = []

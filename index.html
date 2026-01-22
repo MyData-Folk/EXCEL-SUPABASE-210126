@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,72 +18,449 @@
             --text-secondary: #8B949E;
             --border-color: #3D3D3D;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-primary); color: var(--text-primary); }
-        .header { background: var(--bg-secondary); padding: 16px 32px; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); }
-        .logo { display: flex; align-items: center; gap: 12px; }
-        .logo-icon { width: 40px; height: 40px; background: var(--supabase-green); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--bg-primary); }
-        .logo-text { font-size: 1.25rem; font-weight: 600; }
-        .logo-text span { color: var(--supabase-green); }
-        .main-layout { display: flex; min-height: calc(100vh - 65px); }
-        .sidebar { width: 280px; background: var(--bg-secondary); padding: 24px; border-right: 1px solid var(--border-color); }
-        .main-content { flex: 1; padding: 32px; overflow-y: auto; }
-        .wizard-steps { display: flex; justify-content: space-between; margin-bottom: 32px; position: relative; }
-        .wizard-steps::before { content: ''; position: absolute; top: 20px; left: 40px; right: 40px; height: 2px; background: var(--border-color); }
-        .wizard-step { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; }
-        .step-number { width: 40px; height: 40px; border-radius: 50%; background: var(--bg-tertiary); border: 2px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-weight: 600; margin-bottom: 8px; }
-        .wizard-step.active .step-number { background: var(--supabase-green); border-color: var(--supabase-green); color: var(--bg-primary); }
-        .step-label { font-size: 0.875rem; color: var(--text-secondary); }
-        .wizard-step.active .step-label { color: var(--text-primary); font-weight: 500; }
-        .card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
-        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); }
-        .card-title { font-size: 1.125rem; font-weight: 600; }
-        .dropzone { border: 2px dashed var(--border-color); border-radius: 12px; padding: 48px 24px; text-align: center; cursor: pointer; transition: all 0.25s; background: var(--bg-tertiary); }
-        .dropzone:hover { border-color: var(--supabase-green); background: var(--supabase-green-light); }
-        .dropzone-icon { width: 64px; height: 64px; margin: 0 auto 16px; background: var(--supabase-green-light); border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-        .dropzone-text { font-size: 1rem; margin-bottom: 8px; }
-        .dropzone-subtext { font-size: 0.875rem; color: var(--text-secondary); }
-        .dropzone input { display: none; }
-        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 24px; font-size: 1rem; font-weight: 500; border: none; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
-        .btn-primary { background: var(--supabase-green); color: var(--bg-primary); }
-        .btn-primary:hover { background: var(--supabase-green-hover); }
-        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
-        .btn-group { display: flex; gap: 16px; margin-top: 24px; }
-        .form-group { margin-bottom: 24px; }
-        .form-label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 8px; }
-        .form-select { width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 1rem; }
-        .form-input { width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 1rem; }
-        .tabs { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
-        .tab { padding: 8px 16px; background: none; border: none; color: var(--text-secondary); cursor: pointer; border-radius: 4px; }
-        .tab:hover { color: var(--text-primary); background: var(--bg-tertiary); }
-        .tab.active { color: var(--supabase-green); background: var(--supabase-green-light); }
-        .connection-status { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--bg-tertiary); border-radius: 20px; font-size: 0.875rem; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
-        .status-dot.connected { background: var(--supabase-green); }
-        .status-dot.disconnected { background: #EF4444; }
-        .footer { background: var(--bg-secondary); padding: 16px 32px; display: flex; justify-content: space-between; border-top: 1px solid var(--border-color); font-size: 0.875rem; color: var(--text-secondary); }
-        .uploaded-file { display: flex; align-items: center; gap: 16px; padding: 16px; background: var(--supabase-green-light); border: 1px solid var(--supabase-green); border-radius: 8px; margin-top: 16px; }
-        .preview-container { margin-top: 24px; overflow-x: auto; border-radius: 8px; border: 1px solid var(--border-color); }
-        .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-        .data-table th { background: var(--bg-tertiary); padding: 12px; text-align: left; font-weight: 600; }
-        .data-table td { padding: 12px; border-top: 1px solid var(--border-color); }
-        .badge { display: inline-block; padding: 2px 8px; font-size: 0.75rem; font-weight: 500; border-radius: 4px; background: var(--bg-tertiary); }
-        .sidebar-section { margin-bottom: 32px; }
-        .sidebar-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 16px; }
-        .template-item { padding: 16px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; border: 1px solid transparent; }
-        .template-item:hover { border-color: var(--supabase-green); }
-        .template-item-name { font-weight: 500; margin-bottom: 4px; }
-        .template-item-table { font-size: 0.75rem; color: var(--text-secondary); }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat-card { background: var(--bg-tertiary); padding: 24px; border-radius: 8px; text-align: center; }
-        .stat-value { font-size: 2rem; font-weight: 700; color: var(--supabase-green); }
-        .stat-label { font-size: 0.875rem; color: var(--text-secondary); margin-top: 8px; }
-        .message { padding: 16px; border-radius: 8px; margin-bottom: 16px; }
-        .message-success { background: rgba(16, 185, 129, 0.1); border: 1px solid #10B981; color: #10B981; }
-        .message-error { background: rgba(239, 68, 68, 0.1); border: 1px solid #EF4444; color: #EF4444; }
-        @media (max-width: 768px) { .sidebar { display: none; } }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            padding: 16px 32px;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--supabase-green);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: var(--bg-primary);
+        }
+
+        .logo-text {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .logo-text span {
+            color: var(--supabase-green);
+        }
+
+        .main-layout {
+            display: flex;
+            min-height: calc(100vh - 65px);
+        }
+
+        .sidebar {
+            width: 280px;
+            background: var(--bg-secondary);
+            padding: 24px;
+            border-right: 1px solid var(--border-color);
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+        }
+
+        .wizard-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 32px;
+            position: relative;
+        }
+
+        .wizard-steps::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 40px;
+            right: 40px;
+            height: 2px;
+            background: var(--border-color);
+        }
+
+        .wizard-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .wizard-step.active .step-number {
+            background: var(--supabase-green);
+            border-color: var(--supabase-green);
+            color: var(--bg-primary);
+        }
+
+        .step-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .wizard-step.active .step-label {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .card-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .dropzone {
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 48px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s;
+            background: var(--bg-tertiary);
+        }
+
+        .dropzone:hover {
+            border-color: var(--supabase-green);
+            background: var(--supabase-green-light);
+        }
+
+        .dropzone-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            background: var(--supabase-green-light);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .dropzone-text {
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+
+        .dropzone-subtext {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .dropzone input {
+            display: none;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: 500;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn-primary {
+            background: var(--supabase-green);
+            color: var(--bg-primary);
+        }
+
+        .btn-primary:hover {
+            background: var(--supabase-green-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+
+        .tab {
+            padding: 8px 16px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .tab.active {
+            color: var(--supabase-green);
+            background: var(--supabase-green-light);
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-tertiary);
+            border-radius: 20px;
+            font-size: 0.875rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-dot.connected {
+            background: var(--supabase-green);
+        }
+
+        .status-dot.disconnected {
+            background: #EF4444;
+        }
+
+        .footer {
+            background: var(--bg-secondary);
+            padding: 16px 32px;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid var(--border-color);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .uploaded-file {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: var(--supabase-green-light);
+            border: 1px solid var(--supabase-green);
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+
+        .preview-container {
+            margin-top: 24px;
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        .data-table th {
+            background: var(--bg-tertiary);
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .data-table td {
+            padding: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+        }
+
+        .sidebar-section {
+            margin-bottom: 32px;
+        }
+
+        .sidebar-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .template-item {
+            padding: 16px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            border: 1px solid transparent;
+        }
+
+        .template-item:hover {
+            border-color: var(--supabase-green);
+        }
+
+        .template-item-name {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .template-item-table {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-tertiary);
+            padding: 24px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--supabase-green);
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+
+        .message {
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .message-success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid #10B981;
+            color: #10B981;
+        }
+
+        .message-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #EF4444;
+            color: #EF4444;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+        }
     </style>
 </head>
+
 <body>
     <div class="app-container">
         <header class="header">
@@ -135,8 +513,10 @@
                         </div>
                         <div class="dropzone" id="dropzone">
                             <div class="dropzone-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="32" height="32">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor" width="32" height="32">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                                 </svg>
                             </div>
                             <div class="dropzone-text">Glissez-deposez votre fichier ici</div>
@@ -182,8 +562,10 @@
                             <button class="btn btn-secondary btn-sm" onclick="loadTables()">Actualiser</button>
                         </div>
                         <div class="tabs">
-                            <button class="tab active" data-tab="append" onclick="switchTab('append')">Mise a jour (Append)</button>
-                            <button class="tab" data-tab="create" onclick="switchTab('create')">Nouvelle table (Create)</button>
+                            <button class="tab active" data-tab="append" onclick="switchTab('append')">Mise a jour
+                                (Append)</button>
+                            <button class="tab" data-tab="create" onclick="switchTab('create')">Nouvelle table
+                                (Create)</button>
                         </div>
                         <div id="tab-append">
                             <div class="form-group">
@@ -196,7 +578,8 @@
                         <div id="tab-create" style="display: none;">
                             <div class="form-group">
                                 <label class="form-label">Nom de la nouvelle table</label>
-                                <input type="text" class="form-input" id="newTableName" placeholder="ex: import_stocks_2026">
+                                <input type="text" class="form-input" id="newTableName"
+                                    placeholder="ex: import_stocks_2026">
                             </div>
                         </div>
                         <div class="btn-group">
@@ -205,8 +588,14 @@
                         </div>
                     </section>
                     <section class="card fade-in" id="step3" style="display: none;">
-                        <div class="card-header">
-                            <h2 class="card-title">3. Mapping et Nettoyage</h2>
+                        <div class="form-group"
+                            style="padding: 16px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 24px;">
+                            <label class="form-label"
+                                style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                <input type="checkbox" id="splitDatetimeCheckbox" style="width: 20px; height: 20px;">
+                                <span><strong>Decouper Date et Heure</strong> (Detecte et separe les colonnes
+                                    temporelles)</span>
+                            </label>
                         </div>
                         <div class="mapping-container" id="mappingContainer"></div>
                         <div class="btn-group" style="margin-top: 32px;">
@@ -234,10 +623,23 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Zone de sauvegarde de template -->
+                        <div class="form-group"
+                            style="margin-top: 24px; padding: 16px; border: 1px solid var(--border-color); border-radius: 8px;">
+                            <h3 class="sidebar-title">Sauvegarder ce modele</h3>
+                            <div style="display: flex; gap: 16px;">
+                                <input type="text" class="form-input" id="templateName"
+                                    placeholder="Nom du modele (ex: Import Hebdo)">
+                                <button class="btn btn-secondary" onclick="saveTemplate()">Enregistrer</button>
+                            </div>
+                        </div>
+
                         <div id="importResult"></div>
                         <div class="btn-group">
                             <button class="btn btn-secondary" onclick="goToStep(3)">Precedent</button>
-                            <button class="btn btn-primary" id="importBtn" onclick="executeImport()">Lancer l'import</button>
+                            <button class="btn btn-primary" id="importBtn" onclick="executeImport()">Lancer
+                                l'import</button>
                         </div>
                     </section>
                 </div>
@@ -249,358 +651,486 @@
         </footer>
     </div>
     <script>
-    (function() {
-        var state = {
-            currentStep: 1,
-            currentTab: 'append',
-            uploadedFile: null,
-            previewData: null,
-            sourceHeaders: [],
-            sourceColumns: [],
-            targetTables: [],
-            targetColumns: [],
-            mapping: {},
-            columnTypes: {},
-            importMode: 'append',
-            templates: []
-        };
-        var API_BASE = '/api';
-        
-        function initializeApp() {
-            setupEventListeners();
-            loadTemplates();
-            loadTables();
-        }
-        
-        function setupEventListeners() {
-            var dropzone = document.getElementById('dropzone');
-            var fileInput = document.getElementById('fileInput');
-            dropzone.addEventListener('click', function() { fileInput.click(); });
-            dropzone.addEventListener('dragover', function(e) { e.preventDefault(); dropzone.classList.add('dragover'); });
-            dropzone.addEventListener('dragleave', function() { dropzone.classList.remove('dragover'); });
-            dropzone.addEventListener('drop', function(e) {
-                e.preventDefault();
-                dropzone.classList.remove('dragover');
-                if (e.dataTransfer.files.length > 0) {
-                    handleFileUpload(e.dataTransfer.files[0]);
-                }
-            });
-            fileInput.addEventListener('change', function(e) {
-                if (e.target.files.length > 0) {
-                    handleFileUpload(e.target.files[0]);
-                }
-            });
-        }
-        
-        function handleFileUpload(file) {
-            var formData = new FormData();
-            formData.append('file', file);
-            fetch(API_BASE + '/upload', { method: 'POST', body: formData })
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
-                    state.uploadedFile = data;
-                    state.sourceHeaders = data.headers || [];
-                    displayUploadedFile(data);
-                    if (data.sheets && data.sheets.length > 0) {
-                        displaySheetSelect(data.sheets);
-                        loadPreview(data.filepath, data.sheets[0]);
-                    } else {
-                        loadPreview(data.filepath, null);
-                    }
-                })
-                .catch(function(error) { alert('Erreur: ' + error.message); });
-        }
-        
-        function displayUploadedFile(data) {
-            document.getElementById('dropzone').style.display = 'none';
-            document.getElementById('uploadedFileContainer').style.display = 'block';
-            document.getElementById('uploadedFileName').textContent = data.filename;
-            var meta = data.file_type.toUpperCase() + ' - ' + data.total_rows + ' lignes';
-            if (data.sheets && data.sheets.length > 0) {
-                meta += ' - ' + data.sheets.length + ' onglet(s)';
-            }
-            document.getElementById('uploadedFileMeta').textContent = meta;
-            document.getElementById('step1Actions').style.display = 'flex';
-        }
-        
-        function displaySheetSelect(sheets) {
-            var container = document.getElementById('sheetSelectContainer');
-            var select = document.getElementById('sheetSelect');
-            select.innerHTML = sheets.map(function(sheet) { return '<option value="' + sheet + '">' + sheet + '</option>'; }).join('');
-            container.style.display = 'block';
-        }
-        
-        function loadPreview(filename, sheetName) {
-            fetch(API_BASE + '/preview', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: filename, sheet_name: sheetName })
-            })
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
-                state.previewData = data;
-                state.sourceHeaders = data.headers;
-                state.sourceColumns = data.normalized_headers;
-                displayPreview(data);
-            })
-            .catch(function(error) { alert('Erreur: ' + error.message); });
-        }
-        
-        function displayPreview(data) {
-            document.getElementById('previewContainer').style.display = 'block';
-            document.getElementById('rowCountBadge').textContent = data.total_rows + ' lignes';
-            var thead = document.getElementById('previewTableHead');
-            var tbody = document.getElementById('previewTableBody');
-            thead.innerHTML = '<tr>' + data.headers.map(function(h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
-            tbody.innerHTML = data.preview.map(function(row) {
-                return '<tr>' + data.headers.map(function(h) { return '<td>' + (row[h] || '') + '</td>'; }).join('') + '</tr>';
-            }).join('');
-        }
-        
-        function clearFile() {
-            state.uploadedFile = null;
-            state.previewData = null;
-            state.sourceHeaders = [];
-            document.getElementById('dropzone').style.display = 'block';
-            document.getElementById('uploadedFileContainer').style.display = 'none';
-            document.getElementById('sheetSelectContainer').style.display = 'none';
-            document.getElementById('previewContainer').style.display = 'none';
-            document.getElementById('step1Actions').style.display = 'none';
-            document.getElementById('fileInput').value = '';
-        }
-        
-        function goToStep(step) {
-            if (step > state.currentStep && !validateStep(state.currentStep)) {
-                return;
-            }
-            document.querySelectorAll('.wizard-step').forEach(function(s) {
-                s.classList.remove('active');
-                if (parseInt(s.dataset.step) < step) {
-                    s.classList.add('completed');
-                } else {
-                    s.classList.remove('completed');
-                }
-            });
-            document.querySelectorAll('.card[id^="step"]').forEach(function(c) { c.style.display = 'none'; });
-            document.querySelector('.wizard-step[data-step="' + step + '"]').classList.add('active');
-            document.getElementById('step' + step).style.display = 'block';
-            state.currentStep = step;
-            if (step === 2) { setupStep2(); }
-            if (step === 3) { setupStep3(); }
-            if (step === 4) { setupStep4(); }
-        }
-        
-        function validateStep(step) {
-            if (step === 1) {
-                if (!state.uploadedFile) { alert('Veuillez d\'abord uploader un fichier'); return false; }
-            }
-            if (step === 2) {
-                if (state.importMode === 'append') {
-                    var table = document.getElementById('existingTableSelect').value;
-                    if (!table) { alert('Veuillez selectionner une table cible'); return false; }
-                } else {
-                    var tableName = document.getElementById('newTableName').value.trim();
-                    if (!tableName) { alert('Veuillez entrer un nom de table'); return false; }
-                }
-            }
-            return true;
-        }
-        
-        function setupStep2() {
-            if (state.importMode === 'append' && state.targetTables.length > 0) {
-            }
-        }
-        
-        function loadTables() {
-            fetch(API_BASE + '/tables')
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
-                    state.targetTables = data.tables || [];
-                    var select = document.getElementById('existingTableSelect');
-                    select.innerHTML = '<option value="">Selectionner une table...</option>' +
-                        state.targetTables.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
-                })
-                .catch(function(error) { console.error('Erreur:', error); });
-        }
-        
-        function loadTableColumns(tableName) {
-            if (!tableName) return;
-            fetch(API_BASE + '/tables/' + tableName + '/columns')
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
-                    state.targetColumns = data.columns || [];
-                })
-                .catch(function(error) { console.error('Erreur:', error); });
-        }
-        
-        function switchTab(tab) {
-            state.importMode = tab;
-            document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-            document.querySelector('.tab[data-tab="' + tab + '"]').classList.add('active');
-            document.getElementById('tab-append').style.display = tab === 'append' ? 'block' : 'none';
-            document.getElementById('tab-create').style.display = tab === 'create' ? 'block' : 'none';
-        }
-        
-        function setupStep3() {
-            generateMapping();
-        }
-        
-        function generateMapping() {
-            var container = document.getElementById('mappingContainer');
-            var sourceHeaders = state.sourceHeaders;
-            var targetHeaders;
-            if (state.importMode === 'append') {
-                targetHeaders = state.targetColumns.map(function(c) { return c.column_name; });
-            } else {
-                targetHeaders = sourceHeaders.map(function(h) { return snakeCase(h); });
-            }
-            var mapping = {};
-            var columnTypes = {};
-            container.innerHTML = sourceHeaders.map(function(header, index) {
-                var normalizedHeader = snakeCase(header);
-                var targetCol = targetHeaders.find(function(t) { return t.toLowerCase() === normalizedHeader.toLowerCase(); });
-                if (!targetCol && index < targetHeaders.length) { targetCol = targetHeaders[index]; }
-                mapping[header] = targetCol || '';
-                columnTypes[header] = 'text';
-                return '<div class="mapping-row" style="display: grid; grid-template-columns: 1fr 40px 1fr 120px; gap: 16px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 8px; align-items: center;">' +
-                    '<div><div class="form-label">Source: ' + header + '</div></div>' +
-                    '<div style="text-align: center; color: var(--supabase-green);">-></div>' +
-                    '<div><label class="form-label">Destination</label><select class="form-select" style="padding: 8px;" data-source="' + header + '" onchange="updateMapping(\'' + header + '\', this.value)"><option value="">-- Ignorer --</option>' +
-                    targetHeaders.map(function(t) { return '<option value="' + t + '" ' + (t === targetCol ? 'selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
-                    '<div><label class="form-label">Type</label><select class="form-select" style="padding: 8px;" data-source="' + header + '" onchange="updateColumnType(\'' + header + '\', this.value)"><option value="text">Texte</option><option value="numeric">Numerique</option><option value="date">Date</option></select></div></div>';
-            }).join('');
-            state.mapping = mapping;
-            state.columnTypes = columnTypes;
-        }
-        
-        function updateMapping(source, target) {
-            state.mapping[source] = target;
-        }
-        
-        function updateColumnType(source, type) {
-            state.columnTypes[source] = type;
-        }
-        
-        function snakeCase(str) {
-            return str.toLowerCase().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '').replace(/_+/g, '_');
-        }
-        
-        function setupStep4() {
-            var targetTable = state.importMode === 'append' ? document.getElementById('existingTableSelect').value : document.getElementById('newTableName').value;
-            document.getElementById('summaryRows').textContent = state.previewData ? state.previewData.total_rows : 0;
-            document.getElementById('summaryColumns').textContent = state.sourceHeaders.length;
-            document.getElementById('summaryTable').textContent = targetTable;
-            document.getElementById('importResult').style.display = 'none';
-            document.getElementById('importBtn').style.display = 'inline-flex';
-        }
-        
-        function executeImport() {
-            var targetTable = state.importMode === 'append' ? document.getElementById('existingTableSelect').value : document.getElementById('newTableName').value;
-            var endpoint = state.importMode === 'append' ? 'append' : 'create';
-            var payload = {
-                filename: state.uploadedFile.filepath,
-                sheet_name: document.getElementById('sheetSelect') ? document.getElementById('sheetSelect').value : null,
-                table_name: targetTable,
-                column_mapping: state.mapping,
-                column_types: state.columnTypes
+        (function () {
+            var state = {
+                currentStep: 1,
+                currentTab: 'append',
+                uploadedFile: null,
+                previewData: null,
+                sourceHeaders: [],
+                sourceColumns: [],
+                targetTables: [],
+                targetColumns: [],
+                mapping: {},
+                columnTypes: {},
+                importMode: 'append',
+                templates: []
             };
-            fetch(API_BASE + '/import/' + endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
-                if (data.error) {
-                    showImportError(data.error);
-                } else {
-                    showImportSuccess(data);
-                }
-            })
-            .catch(function(error) { showImportError(error.message); });
-        }
-        
-        function showImportSuccess(data) {
-            document.getElementById('importBtn').style.display = 'none';
-            document.getElementById('importResult').innerHTML = '<div class="message message-success"><strong>Import reussi!</strong><p>' + data.rows_inserted + ' ligne(s) inseree(s) dans la table "' + data.table_name + '"</p></div>';
-            document.getElementById('importResult').style.display = 'block';
-        }
-        
-        function showImportError(error) {
-            document.getElementById('importBtn').style.display = 'none';
-            document.getElementById('importResult').innerHTML = '<div class="message message-error"><strong>Erreur lors de l\'import</strong><p>' + error + '</p></div>';
-            document.getElementById('importResult').style.display = 'block';
-        }
-        
-        function loadTemplates() {
-            fetch(API_BASE + '/templates')
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
-                    state.templates = data.templates || [];
-                    renderTemplates();
-                })
-                .catch(function(error) { console.error('Erreur:', error); });
-        }
-        
-        function renderTemplates() {
-            var container = document.getElementById('templateList');
-            if (state.templates.length === 0) {
-                container.innerHTML = '<li class="template-item" onclick="showNoTemplatesMessage()"><div class="template-item-name">Aucun template</div><div class="template-item-table">Creez votre premier import</div></li>';
-                return;
+            var API_BASE = '/api';
+
+            function initializeApp() {
+                setupEventListeners();
+                loadTemplates();
+                loadTables();
             }
-            container.innerHTML = state.templates.map(function(t) {
-                return '<li class="template-item" onclick="applyTemplate(\'' + t.id + '\')"><div class="template-item-name">' + t.name + '</div><div class="template-item-table">' + t.target_table + '</div></li>';
-            }).join('');
-        }
-        
-        function showNoTemplatesMessage() {
-            alert('Aucun template disponible.');
-        }
-        
-        function applyTemplate(templateId) {
-            if (!state.uploadedFile) { alert('Veuillez d\'abord uploader un fichier'); return; }
-            fetch(API_BASE + '/templates/' + templateId + '/apply', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: state.uploadedFile.filepath })
-            })
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
-                if (data.error) { alert(data.error); return; }
-                var template = data.template;
-                if (template.target_table) {
-                    if (state.importMode === 'append') {
-                        document.getElementById('existingTableSelect').value = template.target_table;
-                        loadTableColumns(template.target_table);
+
+            function setupEventListeners() {
+                var dropzone = document.getElementById('dropzone');
+                var fileInput = document.getElementById('fileInput');
+                if (dropzone) {
+                    dropzone.addEventListener('click', function () { fileInput.click(); });
+                    dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('dragover'); });
+                    dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('dragover'); });
+                    dropzone.addEventListener('drop', function (e) {
+                        e.preventDefault();
+                        dropzone.classList.remove('dragover');
+                        if (e.dataTransfer.files.length > 0) {
+                            handleFileUpload(e.dataTransfer.files[0]);
+                        }
+                    });
+                }
+                if (fileInput) {
+                    fileInput.addEventListener('change', function (e) {
+                        if (e.target.files.length > 0) {
+                            handleFileUpload(e.target.files[0]);
+                        }
+                    });
+                }
+            }
+
+            function handleFileUpload(file) {
+                var formData = new FormData();
+                formData.append('file', file);
+
+                document.getElementById('dropzone').innerHTML = '<div class="dropzone-text">Chargement en cours...</div>';
+
+                fetch(API_BASE + '/upload', { method: 'POST', body: formData })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            return response.json().then(function (err) { throw new Error(err.error || response.statusText); });
+                        }
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        state.uploadedFile = data;
+                        state.sourceHeaders = data.headers || [];
+                        displayUploadedFile(data);
+                        if (data.sheets && data.sheets.length > 0) {
+                            displaySheetSelect(data.sheets);
+                            loadPreview(data.filepath, data.sheets[0]);
+                        } else {
+                            loadPreview(data.filepath, null);
+                        }
+                    })
+                    .catch(function (error) {
+                        alert('Erreur: ' + error.message);
+                        resetDropzone();
+                    });
+            }
+
+            function resetDropzone() {
+                var dz = document.getElementById('dropzone');
+                if (dz) {
+                    dz.innerHTML = `
+                        <div class="dropzone-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="32" height="32">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                        </div>
+                        <div class="dropzone-text">Glissez-deposez votre fichier ici</div>
+                        <div class="dropzone-subtext">ou cliquez pour selectionner - CSV, XLSX, XLS</div>
+                        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+                    `;
+                    setupEventListeners();
+                }
+            }
+
+            function displayUploadedFile(data) {
+                if (!data || !data.file_type) return;
+                document.getElementById('dropzone').style.display = 'none';
+                document.getElementById('uploadedFileContainer').style.display = 'block';
+                document.getElementById('uploadedFileName').textContent = data.filename;
+                var meta = (data.file_type || 'INC').toUpperCase() + ' - ' + (data.total_rows || 0) + ' lignes';
+                if (data.sheets && data.sheets.length > 0) {
+                    meta += ' - ' + data.sheets.length + ' onglet(s)';
+                }
+                document.getElementById('uploadedFileMeta').textContent = meta;
+                document.getElementById('step1Actions').style.display = 'flex';
+            }
+
+            function displaySheetSelect(sheets) {
+                var container = document.getElementById('sheetSelectContainer');
+                var select = document.getElementById('sheetSelect');
+                if (select) {
+                    select.innerHTML = sheets.map(function (sheet) { return '<option value="' + sheet + '">' + sheet + '</option>'; }).join('');
+                    container.style.display = 'block';
+                }
+            }
+
+            function loadPreview(filename, sheetName) {
+                fetch(API_BASE + '/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: filename, sheet_name: sheetName })
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        state.previewData = data;
+                        state.sourceHeaders = data.headers;
+                        state.sourceColumns = data.normalized_headers;
+                        displayPreview(data);
+                    })
+                    .catch(function (error) { alert('Erreur: ' + error.message); });
+            }
+
+            function displayPreview(data) {
+                document.getElementById('previewContainer').style.display = 'block';
+                document.getElementById('rowCountBadge').textContent = data.total_rows + ' lignes';
+                var thead = document.getElementById('previewTableHead');
+                var tbody = document.getElementById('previewTableBody');
+                if (thead && tbody) {
+                    thead.innerHTML = '<tr>' + data.headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+                    tbody.innerHTML = data.preview.map(function (row) {
+                        return '<tr>' + data.headers.map(function (h) { return '<td>' + (row[h] || '') + '</td>'; }).join('') + '</tr>';
+                    }).join('');
+                }
+            }
+
+            window.clearFile = function () {
+                state.uploadedFile = null;
+                state.previewData = null;
+                state.sourceHeaders = [];
+                state.mapping = {};
+                state.columnTypes = {};
+                document.getElementById('dropzone').style.display = 'block';
+                document.getElementById('uploadedFileContainer').style.display = 'none';
+                document.getElementById('sheetSelectContainer').style.display = 'none';
+                document.getElementById('previewContainer').style.display = 'none';
+                document.getElementById('step1Actions').style.display = 'none';
+                var fi = document.getElementById('fileInput');
+                if (fi) fi.value = '';
+                resetDropzone();
+            }
+
+            window.goToStep = function (step) {
+                if (step > state.currentStep && !validateStep(state.currentStep)) {
+                    return;
+                }
+                document.querySelectorAll('.wizard-step').forEach(function (s) {
+                    s.classList.remove('active');
+                    if (parseInt(s.dataset.step) < step) {
+                        s.classList.add('completed');
                     } else {
-                        document.getElementById('newTableName').value = template.target_table;
+                        s.classList.remove('completed');
+                    }
+                });
+                document.querySelectorAll('.card[id^="step"]').forEach(function (c) { c.style.display = 'none'; });
+                var activeStep = document.querySelector('.wizard-step[data-step="' + step + '"]');
+                if (activeStep) activeStep.classList.add('active');
+                var stepEl = document.getElementById('step' + step);
+                if (stepEl) stepEl.style.display = 'block';
+                state.currentStep = step;
+                if (step === 2) { setupStep2(); }
+                if (step === 3) { setupStep3(); }
+                if (step === 4) { setupStep4(); }
+            }
+
+            function validateStep(step) {
+                if (step === 1) {
+                    if (!state.uploadedFile) { alert('Veuillez d\'abord uploader un fichier'); return false; }
+                }
+                if (step === 2) {
+                    if (state.importMode === 'append') {
+                        var table = document.getElementById('existingTableSelect').value;
+                        if (!table) { alert('Veuillez selectionner une table cible'); return false; }
+                    } else {
+                        var tableName = document.getElementById('newTableName').value.trim();
+                        if (!tableName) { alert('Veuillez entrer un nom de table'); return false; }
                     }
                 }
-                state.mapping = template.column_mapping || {};
-                state.columnTypes = template.column_types || {};
-                goToStep(3);
-            })
-            .catch(function(error) { alert('Erreur: ' + error.message); });
-        }
-        
-        function checkSupabaseConnection() {
-            fetch(API_BASE + '/health')
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
-                    if (data.status === 'healthy') {
-                        document.getElementById('statusDot').classList.add('connected');
-                        document.getElementById('statusDot').classList.remove('disconnected');
-                        document.getElementById('statusText').textContent = 'Serveur connecte';
+                return true;
+            }
+
+            function setupStep2() {
+                // Refresh table list
+                loadTables();
+            }
+
+            function loadTables() {
+                fetch(API_BASE + '/tables')
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        state.targetTables = data.tables || [];
+                        var select = document.getElementById('existingTableSelect');
+                        if (select) {
+                            var currentVal = select.value;
+                            select.innerHTML = '<option value="">Selectionner une table...</option>' +
+                                state.targetTables.map(function (t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+                            if (currentVal && state.targetTables.includes(currentVal)) {
+                                select.value = currentVal;
+                            }
+                        }
+                    })
+                    .catch(function (error) { console.error('Erreur:', error); });
+            }
+
+            window.loadTableColumns = function (tableName) {
+                if (!tableName) return;
+                fetch(API_BASE + '/tables/' + tableName + '/columns')
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        state.targetColumns = data.columns || [];
+                        if (state.currentStep === 3) generateMapping();
+                    })
+                    .catch(function (error) { console.error('Erreur:', error); });
+            }
+
+            window.switchTab = function (tab) {
+                state.importMode = tab;
+                document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+                var activeTab = document.querySelector('.tab[data-tab="' + tab + '"]');
+                if (activeTab) activeTab.classList.add('active');
+                document.getElementById('tab-append').style.display = tab === 'append' ? 'block' : 'none';
+                document.getElementById('tab-create').style.display = tab === 'create' ? 'block' : 'none';
+
+                state.mapping = {};
+                state.columnTypes = {};
+            }
+
+            function setupStep3() {
+                generateMapping();
+            }
+
+            function generateMapping() {
+                var container = document.getElementById('mappingContainer');
+                if (!container) return;
+                var sourceHeaders = state.sourceHeaders;
+                var targetHeaders;
+                if (state.importMode === 'append') {
+                    targetHeaders = state.targetColumns.map(function (c) { return c.column_name; });
+                } else {
+                    targetHeaders = sourceHeaders.map(function (h) { return snakeCase(h); });
+                }
+
+                var mapping = state.mapping || {};
+                var columnTypes = state.columnTypes || {};
+
+                container.innerHTML = sourceHeaders.map(function (header, index) {
+                    var normalizedHeader = snakeCase(header);
+                    var targetCol = mapping[header];
+                    if (targetCol === undefined) {
+                        targetCol = targetHeaders.find(function (t) { return t.toLowerCase() === normalizedHeader.toLowerCase(); });
+                        if (!targetCol && index < targetHeaders.length && state.importMode === 'create') { targetCol = targetHeaders[index]; }
                     }
+
+                    mapping[header] = targetCol || '';
+                    if (!columnTypes[header]) columnTypes[header] = 'text';
+
+                    return '<div class="mapping-row" style="display: grid; grid-template-columns: 1fr 40px 1fr 120px; gap: 16px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 8px; align-items: center;">' +
+                        '<div><div class="form-label">Source: ' + header + '</div></div>' +
+                        '<div style="text-align: center; color: var(--supabase-green);">-></div>' +
+                        '<div><label class="form-label">Destination</label><select class="form-select" style="padding: 8px;" data-source="' + header + '" onchange="updateMapping(\'' + header + '\', this.value)"><option value="">-- Ignorer --</option>' +
+                        targetHeaders.map(function (t) { return '<option value="' + t + '" ' + (t === targetCol ? 'selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
+                        '<div><label class="form-label">Type</label><select class="form-select" style="padding: 8px;" data-source="' + header + '" onchange="updateColumnType(\'' + header + '\', this.value)"><option value="text" ' + (columnTypes[header] === 'text' ? 'selected' : '') + '>Texte</option><option value="numeric" ' + (columnTypes[header] === 'numeric' ? 'selected' : '') + '>Numerique</option><option value="date" ' + (columnTypes[header] === 'date' ? 'selected' : '') + '>Date</option></select></div></div>';
+                }).join('');
+                state.mapping = mapping;
+                state.columnTypes = columnTypes;
+            }
+
+            window.updateMapping = function (source, target) {
+                state.mapping[source] = target;
+            }
+
+            window.updateColumnType = function (source, type) {
+                state.columnTypes[source] = type;
+            }
+
+            function snakeCase(str) {
+                return str.toLowerCase().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '').replace(/_+/g, '_');
+            }
+
+            function setupStep4() {
+                var targetTable = state.importMode === 'append' ? document.getElementById('existingTableSelect').value : document.getElementById('newTableName').value;
+                document.getElementById('summaryRows').textContent = state.previewData ? state.previewData.total_rows : 0;
+                document.getElementById('summaryColumns').textContent = state.sourceHeaders.length;
+                document.getElementById('summaryTable').textContent = targetTable;
+                document.getElementById('importResult').style.display = 'none';
+                document.getElementById('importBtn').style.display = 'inline-flex';
+                document.getElementById('importBtn').disabled = false;
+                document.getElementById('importBtn').textContent = 'Lancer l\'import';
+            }
+
+            window.executeImport = function () {
+                var targetTable = state.importMode === 'append' ? document.getElementById('existingTableSelect').value : document.getElementById('newTableName').value;
+                var endpoint = state.importMode === 'append' ? 'append' : 'create';
+                var splitDatetime = document.getElementById('splitDatetimeCheckbox').checked;
+
+                var payload = {
+                    filename: state.uploadedFile.filepath,
+                    sheet_name: document.getElementById('sheetSelect') ? document.getElementById('sheetSelect').value : null,
+                    table_name: targetTable,
+                    column_mapping: state.mapping,
+                    column_types: state.columnTypes,
+                    split_datetime: splitDatetime
+                };
+
+                var btn = document.getElementById('importBtn');
+                btn.disabled = true;
+                btn.textContent = 'Importation en cours...';
+
+                fetch(API_BASE + '/import/' + endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                 })
-                .catch(function() {
-                    document.getElementById('statusText').textContent = 'Non connecte';
-                });
-        }
-        
-        document.addEventListener('DOMContentLoaded', initializeApp);
-        setTimeout(checkSupabaseConnection, 1000);
-    })();
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        if (data.error) {
+                            showImportError(data.error);
+                        } else {
+                            showImportSuccess(data);
+                        }
+                    })
+                    .catch(function (error) { showImportError(error.message); });
+            }
+
+            function showImportSuccess(data) {
+                var btn = document.getElementById('importBtn');
+                btn.style.display = 'none';
+                var res = document.getElementById('importResult');
+                res.innerHTML = '<div class="message message-success"><strong>Import reussi!</strong><p>' + (data.rows_inserted || 0) + ' ligne(s) inseree(s) dans la table "' + data.table_name + '"</p></div>';
+                if (data.warning) {
+                    res.innerHTML += '<div class="message message-warning"><strong>Attention:</strong><p>' + data.warning + '</p><pre style="background:#eee;padding:10px;margin-top:10px;font-size:12px;overflow:auto">' + (data.sql_script || '') + '</pre></div>';
+                }
+                res.style.display = 'block';
+            }
+
+            function showImportError(error) {
+                var btn = document.getElementById('importBtn');
+                btn.disabled = false;
+                btn.textContent = 'Lancer l\'import';
+                var res = document.getElementById('importResult');
+                res.innerHTML = '<div class="message message-error"><strong>Erreur lors de l\'import</strong><p>' + error + '</p></div>';
+                res.style.display = 'block';
+            }
+
+            function loadTemplates() {
+                fetch(API_BASE + '/templates')
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        state.templates = data.templates || [];
+                        renderTemplates();
+                    })
+                    .catch(function (error) { console.error('Erreur:', error); });
+            }
+
+            function renderTemplates() {
+                var container = document.getElementById('templateList');
+                if (!container) return;
+                if (state.templates.length === 0) {
+                    container.innerHTML = '<li class="template-item"><div class="template-item-name">Aucun template</div><div class="template-item-table">Creez votre premier import</div></li>';
+                    return;
+                }
+                container.innerHTML = state.templates.map(function (t) {
+                    return '<li class="template-item" onclick="applyTemplate(\'' + t.id + '\')"><div class="template-item-name">' + t.name + '</div><div class="template-item-table">' + (t.target_table || 'N/A') + '</div></li>';
+                }).join('');
+            }
+
+            window.saveTemplate = function () {
+                var name = document.getElementById('templateName').value.trim();
+                if (!name) { alert('Veuillez entrer un nom pour le modele'); return; }
+
+                var targetTable = state.importMode === 'append' ? document.getElementById('existingTableSelect').value : document.getElementById('newTableName').value;
+
+                var payload = {
+                    name: name,
+                    target_table: targetTable,
+                    column_mapping: state.mapping,
+                    column_types: state.columnTypes
+                };
+
+                fetch(API_BASE + '/templates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        if (data.error) { alert('Erreur: ' + data.error); }
+                        else {
+                            alert('Modele enregistre avec succes');
+                            loadTemplates();
+                        }
+                    })
+                    .catch(function (error) { alert('Erreur: ' + error.message); });
+            };
+
+            window.applyTemplate = function (templateId) {
+                if (!state.uploadedFile) { alert('Veuillez d\'abord uploader un fichier'); return; }
+                fetch(API_BASE + '/templates/' + templateId + '/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: state.uploadedFile.filepath })
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        if (data.error) { alert(data.error); return; }
+                        var template = data.template;
+
+                        if (template.target_table) {
+                            if (state.targetTables.includes(template.target_table)) {
+                                window.switchTab('append');
+                                var sel = document.getElementById('existingTableSelect');
+                                if (sel) {
+                                    sel.value = template.target_table;
+                                    window.loadTableColumns(template.target_table);
+                                }
+                            } else {
+                                window.switchTab('create');
+                                var nt = document.getElementById('newTableName');
+                                if (nt) nt.value = template.target_table;
+                            }
+                        }
+
+                        state.mapping = template.column_mapping || {};
+                        state.columnTypes = template.column_types || {};
+
+                        window.goToStep(3);
+                    })
+                    .catch(function (error) { alert('Erreur: ' + error.message); });
+            }
+
+            function checkSupabaseConnection() {
+                fetch(API_BASE + '/health')
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        var statusDot = document.getElementById('statusDot');
+                        var statusText = document.getElementById('statusText');
+                        if (!statusDot || !statusText) return;
+
+                        if (data.supabase_status === 'connected') {
+                            statusDot.className = 'status-dot connected';
+                            statusText.textContent = 'Supabase: Connecte';
+                        } else if (data.supabase_status === 'degraded') {
+                            statusDot.className = 'status-dot degraded';
+                            statusText.textContent = 'Supabase: Degrade';
+                        } else {
+                            statusDot.className = 'status-dot disconnected';
+                            statusText.textContent = 'Supabase: Erreur';
+                        }
+                    })
+                    .catch(function () {
+                        var sd = document.getElementById('statusDot');
+                        var st = document.getElementById('statusText');
+                        if (sd) sd.className = 'status-dot disconnected';
+                        if (st) st.textContent = 'API Hors-ligne';
+                    });
+            }
+
+            document.addEventListener('DOMContentLoaded', initializeApp);
+            setTimeout(checkSupabaseConnection, 1000);
+        })();
     </script>
 </body>
+
 </html>
