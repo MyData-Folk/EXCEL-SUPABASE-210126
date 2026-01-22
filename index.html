@@ -543,7 +543,7 @@
                             <div class="form-group">
                                 <label class="form-label">Selectionner l'onglet (Excel)</label>
                                 <select class="form-select" id="sheetSelect"
-                                    onchange="loadPreview(state.uploadedFile.filepath, this.value)">
+                                    onchange="state.headerRowIndex = null; window.loadPreview(state.uploadedFile.filepath, this.value)">
                                     <option value="">Choisir un onglet...</option>
                                 </select>
                             </div>
@@ -720,7 +720,8 @@
                 columnTypes: {},
                 importMode: 'append',
                 templates: [],
-                ignoredRows: []
+                ignoredRows: [],
+                headerRowIndex: null
             };
             var API_BASE = '/api';
 
@@ -829,19 +830,25 @@
                 }
             }
 
-            window.loadPreview = function (filename, sheetName) {
+            window.loadPreview = function (filename, sheetName, hIndex) {
                 if (!filename) return;
+                var hRow = (hIndex !== undefined) ? hIndex : state.headerRowIndex;
                 fetch(API_BASE + '/preview', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename: filename, sheet_name: sheetName })
+                    body: JSON.stringify({
+                        filename: filename,
+                        sheet_name: sheetName,
+                        header_row: hRow
+                    })
                 })
                     .then(function (response) { return response.json(); })
                     .then(function (data) {
                         state.previewData = data;
                         state.sourceHeaders = data.headers;
                         state.sourceColumns = data.normalized_headers;
-                        state.ignoredRows = [];
+                        // On ne reset ignoredRows que si on change de fichier/onglet, pas si on change de header row
+                        if (hIndex === undefined) state.ignoredRows = [];
                         displayPreview(data);
                     })
                     .catch(function (error) { alert('Erreur: ' + error.message); });
@@ -857,15 +864,29 @@
                 var thead = document.getElementById('previewTableHead');
                 var tbody = document.getElementById('previewTableBody');
                 if (thead && tbody) {
-                    thead.innerHTML = '<tr><th>Action</th>' + data.headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+                    thead.innerHTML = '<tr><th>Actions</th>' + data.headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
                     tbody.innerHTML = data.preview.map(function (row, idx) {
                         var isIgnored = state.ignoredRows.includes(idx);
+                        var isHeader = state.headerRowIndex === idx;
                         var rowStyle = isIgnored ? 'opacity: 0.5; text-decoration: line-through; background: rgba(0,0,0,0.05);' : '';
+                        if (isHeader) rowStyle = 'background: rgba(var(--supabase-green-rgb), 0.1); font-weight: bold;';
+
                         return '<tr style="' + rowStyle + '">' +
-                            '<td><button class="btn btn-secondary btn-sm" style="padding: 2px 8px;" onclick="toggleIgnoreRow(' + idx + ')">' + (isIgnored ? 'Restaurer' : 'Supprimer') + '</button></td>' +
+                            '<td style="white-space: nowrap;">' +
+                            '<button class="btn btn-secondary btn-sm" style="padding: 2px 8px; margin-right: 4px;" onclick="toggleIgnoreRow(' + idx + ')">' + (isIgnored ? 'Restaurer' : 'Ignorer') + '</button>' +
+                            '<button class="btn btn-primary btn-sm" style="padding: 2px 8px;" onclick="useAsHeader(' + idx + ')">En-têtes</button>' +
+                            '</td>' +
                             data.headers.map(function (h) { return '<td>' + (row[h] || '') + '</td>'; }).join('') + '</tr>';
                     }).join('');
                 }
+            }
+
+            window.useAsHeader = function (idx) {
+                if (!confirm('Utiliser cette ligne comme noms de colonnes ? (Cela rechargera le fichier)')) return;
+                state.headerRowIndex = idx;
+                state.ignoredRows = []; // Crucial: les index changent
+                var sheet = document.getElementById('sheetSelect') ? document.getElementById('sheetSelect').value : null;
+                window.loadPreview(state.uploadedFile.filepath, sheet, idx);
             }
 
             window.toggleIgnoreRow = function (idx) {
@@ -1085,7 +1106,8 @@
                     column_mapping: state.mapping,
                     column_types: state.columnTypes,
                     split_datetime: splitDatetime,
-                    ignored_rows: state.ignoredRows
+                    ignored_rows: state.ignoredRows,
+                    header_row: state.headerRowIndex
                 };
 
                 var btn = document.getElementById('importBtn');

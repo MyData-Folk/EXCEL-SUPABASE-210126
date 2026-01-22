@@ -419,10 +419,8 @@ def dataframe_to_json_records(df):
                 if value is None or (isinstance(value, float) and (pd.isna(value) or value != value)):
                     clean_record[k] = None
                 elif isinstance(value, (pd.Timestamp, datetime)):
-                    if hasattr(value, 'hour') and value.hour == 0 and value.minute == 0 and value.second == 0:
-                        clean_record[k] = value.strftime('%Y-%m-%d')
-                    else:
-                        clean_record[k] = value.isoformat()
+                    # L'utilisateur ne veut pas l'heure, juste YYYY-MM-DD
+                    clean_record[k] = value.strftime('%Y-%m-%d')
                 elif isinstance(value, pd.Timedelta):
                     clean_record[k] = str(value)
                 elif isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -557,7 +555,8 @@ def preview_file():
     data = request.get_json()
     
     filename = data.get('filename')
-    sheet_name = data.get('sheet_name')  # Optionnel pour Excel
+    sheet_name = data.get('sheet_name')
+    header_row = data.get('header_row') # Nouveau: index de la ligne d'en-tête
     
     if not filename:
         return jsonify({'error': 'Nom de fichier requis'}), 400
@@ -571,13 +570,15 @@ def preview_file():
         file_ext = filename.rsplit('.', 1)[1].lower()
         
         if file_ext in ['xlsx', 'xls']:
-            # Spécifier l'onglet si fourni
-            if sheet_name:
-                df = pd.read_excel(file_path, sheet_name=sheet_name)
-            else:
-                df = pd.read_excel(file_path)
+            read_params = {'sheet_name': sheet_name} if sheet_name else {}
+            if header_row is not None:
+                read_params['header'] = int(header_row)
+            df = pd.read_excel(file_path, **read_params)
         elif file_ext == 'csv':
-            df = pd.read_csv(file_path)
+            read_params = {}
+            if header_row is not None:
+                read_params['header'] = int(header_row)
+            df = pd.read_csv(file_path, **read_params)
         
         # Toujours convertir les colonnes en string
         df.columns = [str(c).strip() for c in df.columns]
@@ -718,6 +719,7 @@ def import_append():
     column_types = data.get('column_types', {})
     column_mapping = data.get('column_mapping', {})
     split_datetime = data.get('split_datetime', False)
+    header_row = data.get('header_row') # Nouveau
     
     if not all([filename, table_name]):
         return jsonify({'error': 'Paramètres requis: filename, table_name'}), 400
@@ -734,12 +736,15 @@ def import_append():
         
         # Charger le fichier
         if file_ext in ['xlsx', 'xls']:
-            if sheet_name:
-                df = pd.read_excel(file_path, sheet_name=sheet_name)
-            else:
-                df = pd.read_excel(file_path)
+            read_params = {'sheet_name': sheet_name} if sheet_name else {}
+            if header_row is not None:
+                read_params['header'] = int(header_row)
+            df = pd.read_excel(file_path, **read_params)
         elif file_ext == 'csv':
-            df = pd.read_csv(file_path)
+            read_params = {}
+            if header_row is not None:
+                read_params['header'] = int(header_row)
+            df = pd.read_csv(file_path, **read_params)
         
         # Filtrer les lignes ignorées
         ignored_rows = data.get('ignored_rows', [])
@@ -799,6 +804,7 @@ def import_create():
     column_mapping = data.get('column_mapping', {})
     split_datetime = data.get('split_datetime', False)
     ignored_rows = data.get('ignored_rows', [])
+    header_row = data.get('header_row') # Nouveau
     
     if not all([filename, table_name]):
         return jsonify({'error': 'Paramètres requis: filename, table_name'}), 400
@@ -815,12 +821,15 @@ def import_create():
         
         # Charger le fichier
         if file_ext in ['xlsx', 'xls']:
-            if sheet_name:
-                df = pd.read_excel(file_path, sheet_name=sheet_name)
-            else:
-                df = pd.read_excel(file_path)
+            read_params = {'sheet_name': sheet_name} if sheet_name else {}
+            if header_row is not None:
+                read_params['header'] = int(header_row)
+            df = pd.read_excel(file_path, **read_params)
         elif file_ext == 'csv':
-            df = pd.read_csv(file_path)
+            read_params = {}
+            if header_row is not None:
+                read_params['header'] = int(header_row)
+            df = pd.read_csv(file_path, **read_params)
 
         # Filtrer les lignes ignorées
         if ignored_rows:
