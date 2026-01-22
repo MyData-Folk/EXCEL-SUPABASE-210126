@@ -8,6 +8,8 @@ Date: 21 Janvier 2026
 
 import os
 import json
+import csv
+import io
 import uuid
 import re
 import logging
@@ -75,6 +77,68 @@ def allowed_file(filename):
     """Vérifie si l'extension du fichier est autorisée."""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def read_csv_robust(file_path, **kwargs):
+    """
+    Tente de lire un CSV de manière robuste (encodage, séparateur, bad lines).
+    Utilise csv.Sniffer pour détecter le délimiteur.
+    """
+    encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+    delimiters = [None, ',', ';', '\t', '|'] # None = auto-detect via Sniffer
+
+    # Paramètres de base pour pandas
+    read_params = kwargs.copy()
+    read_params['on_bad_lines'] = 'skip'
+    read_params['engine'] = 'python' # Moteur plus flexible que 'c'
+
+    last_error = None
+
+    for encoding in encodings:
+        read_params['encoding'] = encoding
+        
+        # Tenter de détecter le délimiteur
+        detected_sep = None
+        try:
+            with open(file_path, 'r', encoding=encoding) as f:
+                sample = f.read(2048)
+                try:
+                    dialect = csv.Sniffer().sniff(sample)
+                    detected_sep = dialect.delimiter
+                except csv.Error:
+                    pass # Sniffer a échoué, on essaiera les délimiteurs par défaut
+        except UnicodeDecodeError:
+            continue # Encodage incorrect, suivant
+
+        # Liste des séparateurs à tester pour cet encodage
+        seps_to_try = [detected_sep] if detected_sep else delimiters[1:] # Si détecté, on priorise, sinon on teste tout
+        if detected_sep and detected_sep not in seps_to_try:
+             seps_to_try.append(detected_sep)
+
+        for sep in seps_to_try:
+            if sep:
+                read_params['sep'] = sep
+            
+            try:
+                # Test de lecture
+                df = pd.read_csv(file_path, **read_params)
+                if not df.empty and len(df.columns) > 1:
+                     logger.info(f"CSV lu avec succès: enc={encoding}, sep='{sep}'")
+                     return df
+                elif not df.empty:
+                     # Si une seule colonne, c'est suspect (sauf si le fichier n'a qu'une colonne)
+                     # On sauvegarde ce résultat au cas où, mais on continue de chercher mieux
+                     last_result = df
+            except Exception as e:
+                last_error = e
+                continue
+    
+    # Si on arrive ici, soit on a un résultat 'moyen' (1 colonne), soit rien
+    if 'last_result' in locals():
+        return last_result
+    
+    # Echec total, on relève la dernière erreur ou une générique
+    raise last_error or ValueError("Impossible de lire le fichier CSV (encodage/séparateur incompatible)")
 
 
 def get_supabase_client():
@@ -538,14 +602,8 @@ def upload_file():
                 metadata['total_rows'] = len(df)
         
         elif file_ext == 'csv':
-            # Lire le CSV
-            # Lire le CSV avec gestion des lignes malformées
-            try:
-                # Essai 1: lecture standard
-                df = pd.read_csv(file_path, on_bad_lines='skip', encoding='utf-8')
-            except UnicodeDecodeError:
-                # Essai 2: encoding latin-1
-                df = pd.read_csv(file_path, on_bad_lines='skip', encoding='latin-1')
+            # Lire le CSV de manière robuste
+            df = read_csv_robust(file_path)
             df.columns = [str(c).strip() for c in df.columns]
             metadata['headers'] = list(df.columns)
             metadata['preview'] = dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS))
@@ -590,11 +648,7 @@ def preview_file():
             if header_row is not None:
                 read_params['header'] = int(header_row)
             
-            try:
-                df = pd.read_csv(file_path, **read_params)
-            except UnicodeDecodeError:
-                 read_params['encoding'] = 'latin-1'
-                 df = pd.read_csv(file_path, **read_params)
+            df = read_csv_robust(file_path, **read_params)
         
         # Toujours convertir les colonnes en string
         df.columns = [str(c).strip() for c in df.columns]
@@ -647,12 +701,7 @@ def process_file():
                 df = pd.read_excel(file_path)
         elif file_ext == 'csv':
             # Lire le CSV avec gestion des lignes malformées
-            try:
-                # Essai 1: lecture standard
-                df = pd.read_csv(file_path, on_bad_lines='skip', encoding='utf-8')
-            except UnicodeDecodeError:
-                # Essai 2: encoding latin-1
-                df = pd.read_csv(file_path, on_bad_lines='skip', encoding='latin-1')
+            df = read_csv_robust(file_path)
         
         # Appliquer la normalisation
         df_normalized = normalize_dataframe(df, column_types, None, split_datetime)
@@ -767,11 +816,7 @@ def import_append():
             if header_row is not None:
                 read_params['header'] = int(header_row)
             
-            try:
-                df = pd.read_csv(file_path, **read_params)
-            except UnicodeDecodeError:
-                 read_params['encoding'] = 'latin-1'
-                 df = pd.read_csv(file_path, **read_params)
+            df = read_csv_robust(file_path, **read_params)
         
         # Filtrer les lignes ignorées
         ignored_rows = data.get('ignored_rows', [])
@@ -869,11 +914,7 @@ def import_create():
             if header_row is not None:
                 read_params['header'] = int(header_row)
             
-            try:
-                df = pd.read_csv(file_path, **read_params)
-            except UnicodeDecodeError:
-                 read_params['encoding'] = 'latin-1'
-                 df = pd.read_csv(file_path, **read_params)
+            df = read_csv_robust(file_path, **read_params)
 
         # Filtrer les lignes ignorées
         if ignored_rows:

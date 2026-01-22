@@ -604,14 +604,19 @@
                         </div>
                     </section>
                     <section class="card fade-in" id="step3" style="display: none;">
-                        <div class="form-group"
-                            style="padding: 16px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 24px;">
-                            <label class="form-label"
-                                style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
-                                <input type="checkbox" id="splitDatetimeCheckbox" style="width: 20px; height: 20px;">
-                                <span><strong>Decouper Date et Heure</strong> (Detecte et separe les colonnes
-                                    temporelles)</span>
-                            </label>
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div class="form-group" style="margin-bottom: 0; padding: 0; background: none;">
+                                <label class="form-label"
+                                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="splitDatetimeCheckbox"
+                                        style="width: 18px; height: 18px;">
+                                    <span>Découper Date/Heure auto</span>
+                                </label>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="autoDetectTypes()">
+                                ✨ Auto-détecter les types
+                            </button>
                         </div>
                         <div class="mapping-container" id="mappingContainer"></div>
                         <datalist id="targetColumnsList"></datalist>
@@ -1100,6 +1105,55 @@
 
             window.updateColumnType = function (source, type) {
                 state.columnTypes[source] = type;
+            }
+
+            window.autoDetectTypes = function () {
+                var headers = state.sourceHeaders;
+                var preview = state.previewData.preview;
+                if (!preview || !headers) return;
+
+                var updates = 0;
+                headers.forEach(function (h) {
+                    if (state.ignoredColumns.includes(h)) return;
+
+                    var samples = preview.map(function (r) { return r[h]; }).filter(function (v) {
+                        return v !== null && v !== undefined && v !== '';
+                    });
+
+                    if (samples.length === 0) return;
+
+                    var isNumeric = samples.every(function (v) {
+                        return !isNaN(parseFloat(v)) && isFinite(v);
+                    });
+
+                    // Détection naive de date (ISO ou FR)
+                    var isDate = samples.every(function (v) {
+                        var s = String(v);
+                        return /^(\d{4}-\d{2}-\d{2})/.test(s) ||
+                            /^(\d{2}\/\d{2}\/\d{4})/.test(s) ||
+                            !isNaN(Date.parse(v));
+                    });
+
+                    var type = 'text';
+                    if (isDate) type = 'date';
+                    else if (isNumeric) type = 'numeric';
+
+                    if (state.columnTypes[h] !== type) {
+                        state.columnTypes[h] = type;
+                        updates++;
+                    }
+                });
+
+                if (updates > 0) {
+                    displayMapping();
+                    // Petit feedback visuel
+                    var btn = document.querySelector('button[onclick="autoDetectTypes()"]');
+                    var oldText = btn.textContent;
+                    btn.textContent = '✅ ' + updates + ' types mis à jour';
+                    setTimeout(function () { btn.textContent = oldText; }, 2000);
+                } else {
+                    alert('Aucun changement de type détecté.');
+                }
             }
 
             function snakeCase(str) {
