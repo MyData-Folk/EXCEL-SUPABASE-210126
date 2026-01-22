@@ -405,6 +405,9 @@ def dataframe_to_json_records(df):
     # 1. Remplacer les NaN globaux
     df = df.where(pd.notnull(df), None)
     
+    records = df.to_dict(orient='records')
+    clean_records = []
+    
     for record in records:
         try:
             clean_record = {}
