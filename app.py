@@ -19,6 +19,15 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
+import logging
+
+# Configuration des logs
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # CONFIGURATION
@@ -74,14 +83,32 @@ def get_supabase_client():
     supabase_key = os.getenv('SUPABASE_KEY')
     
     if not supabase_url or not supabase_key:
-        raise ValueError("Configuration Supabase manquante dans .env")
+        error_msg = "Configuration Supabase manquante dans .env (SUPABASE_URL ou SUPABASE_KEY)"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
     
-    return create_client(supabase_url, supabase_key)
+    try:
+        return create_client(supabase_url, supabase_key)
+    except Exception as e:
+        logger.error(f"Erreur d'initialisation du client Supabase: {str(e)}")
+        raise
 
 
 def ensure_upload_folder():
     """Crée le dossier d'upload s'il n'existe pas."""
-    Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
+    folder = app.config['UPLOAD_FOLDER']
+    try:
+        if not os.path.exists(folder):
+            os.makedirs(folder, exist_ok=True)
+            logger.info(f"Dossier d'upload créé : {os.path.abspath(folder)}")
+        else:
+            # Vérifier les permissions en écriture
+            if not os.access(folder, os.W_OK):
+                logger.error(f"ERREUR : Le dossier {folder} n'est pas accessible en écriture")
+            else:
+                logger.debug(f"Dossier d'upload OK : {folder}")
+    except Exception as e:
+        logger.error(f"Erreur lors de la création du dossier {folder} : {str(e)}")
 
 
 def snake_case(text):
@@ -443,6 +470,7 @@ def upload_file():
         return jsonify(metadata)
     
     except Exception as e:
+        logger.error(f"ERREUR API /upload: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
