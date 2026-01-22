@@ -815,6 +815,7 @@ def import_create():
         })
     
     except Exception as e:
+        logger.error(f"ERREUR API /import/create: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -838,6 +839,7 @@ def list_templates():
         return jsonify({'templates': result.data})
     
     except Exception as e:
+        logger.error(f"ERREUR API /templates (GET): {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -876,6 +878,7 @@ def create_template():
         })
     
     except Exception as e:
+        logger.error(f"ERREUR API /templates (POST): {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -913,6 +916,7 @@ def update_template(template_id):
         })
     
     except Exception as e:
+        logger.error(f"ERREUR API /templates/<id> (PUT): {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
