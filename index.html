@@ -1009,7 +1009,13 @@
             }
 
             function snakeCase(str) {
-                return str.toLowerCase().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '').replace(/_+/g, '_');
+                if (!str) return str;
+                return str.toLowerCase()
+                    .replace(/[\s\-]+/g, '_')
+                    .replace(/[^a-z0-9_]/g, '')
+                    .replace(/_+/g, '_')
+                    .substring(0, 63)
+                    .replace(/_$/, '');
             }
 
             function setupStep4() {
