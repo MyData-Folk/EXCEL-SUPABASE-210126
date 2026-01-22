@@ -384,30 +384,46 @@ def normalize_dataframe(df, column_types=None, column_mapping=None, split_dateti
 def dataframe_to_json_records(df):
     """
     Convertit un DataFrame en liste de dictionnaires pour Supabase.
+    Nettoie agressivement les valeurs pour éviter les erreurs de génération JSON.
     """
+    # 1. Remplacer les NaN globaux
+    df = df.where(pd.notnull(df), None)
+    
     records = df.to_dict(orient='records')
     
-    # Nettoyer les valeurs pour Supabase
+    clean_records = []
     for record in records:
+        clean_record = {}
         for key, value in record.items():
-            if pd.isna(value):
-                record[key] = None
+            # Forcer la clé en string
+            k = str(key)
+            
+            # Gérer les valeurs
+            if value is None or (isinstance(value, float) and (pd.isna(value) or value != value)):
+                clean_record[k] = None
             elif isinstance(value, (pd.Timestamp, datetime)):
                 if hasattr(value, 'hour') and value.hour == 0 and value.minute == 0 and value.second == 0:
-                    record[key] = value.strftime('%Y-%m-%d')
+                    clean_record[k] = value.strftime('%Y-%m-%d')
                 else:
-                    record[key] = value.isoformat()
+                    clean_record[k] = value.isoformat()
             elif isinstance(value, pd.Timedelta):
-                record[key] = str(value)
+                clean_record[k] = str(value)
             elif isinstance(value, (int, float)) and not isinstance(value, bool):
-                # Vérifier si c'est un NaN masqué
-                try:
-                    if value != value:  # NaN check
-                        record[key] = None
-                except:
-                    pass
+                # Nettoyage Inf et NaN pour les nombres
+                if value != value or value == float('inf') or value == float('-inf'):
+                    clean_record[k] = None
+                else:
+                    clean_record[k] = value
+            else:
+                # Tout le reste en string si ce n'est pas déjà un type simple
+                if isinstance(value, (str, bool)):
+                    clean_record[k] = value
+                else:
+                    clean_record[k] = str(value)
+        
+        clean_records.append(clean_record)
     
-    return records
+    return clean_records
 
 
 # ============================================================================
