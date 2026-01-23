@@ -267,9 +267,52 @@ BEGIN
                 EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "TYPE DE CHAMBRE" TEXT';
                 EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "PLAN TARIFAIRE" TEXT';
                 EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "TARIF / DISPO" TEXT';
-                 EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "date" DATE';
+                EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "date" DATE';
             EXCEPTION WHEN OTHERS THEN
                 RAISE NOTICE 'Erreur colonnes D-EDGE: %', SQLERRM;
+            END;
+        END IF;
+
+        -- Ajouter les colonnes spécifiques manquantes pour OTA APERÇU
+        IF t = 'OTA APERÇU' THEN
+            BEGIN
+                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS jour TEXT';
+                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS date DATE';
+                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS votre_htel_le_plus_bas TEXT';
+                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS tarif_le_plus_bas_mdiane_du_compset TEXT';
+                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS classement_des_tarifs_du_compset TEXT';
+                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS demande_du_march TEXT';
+                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS bookingcom_classement TEXT';
+                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS jours_fris TEXT';
+                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS vnements TEXT';
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'Erreur colonnes OTA APERÇU: %', SQLERRM;
+            END;
+        END IF;
+
+        -- Ajouter les colonnes spécifiques manquantes pour OTA TARIFS et VS (Structure commune)
+        IF t IN ('OTA TARIFS CONCURRENCE', 'OTA VS HIER', 'OTA VS 3 JOURS', 'OTA VS 7 JOURS') THEN
+            BEGIN
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS jour TEXT', t);
+                IF t = 'OTA VS 7 JOURS' THEN
+                    EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS date DATE', t);
+                ELSE
+                    EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS date_date DATE', t);
+                END IF;
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS demande_du_march TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS folkestone_opra TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS htel_madeleine_haussmann TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS htel_de_larcade TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS htel_cordelia_opra_madeleine TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS queen_mary_opera TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS htel_du_triangle_dor TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS best_western_plus_hotel_sydney_opera TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS hotel_opra_opal TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS htel_royal_opra TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS hotel_george_sand_opra_paris TEXT', t);
+                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS hotel_chavanel TEXT', t);
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'Erreur colonnes OTA % : %', t, SQLERRM;
             END;
         END IF;
         
