@@ -1,133 +1,75 @@
 import os
 import sys
+import json
+import csv
+import io
+import math
+import uuid
+import re
 import logging
+from datetime import datetime
+from pathlib import Path
+from functools import wraps
 
-# Configuration minimale des logs pour capture immédiate
-logging.basicConfig(level=logging.INFO)
+import pandas as pd
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+from dotenv import load_dotenv
+from supabase import create_client, Client
+
+# S'assurer que le dossier courant est accessible
+sys.path.append(os.getcwd())
+from utils import snake_case
+from processor import ProcessorFactory
+
+# Configuration des logs
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- BOOTSTRAP DÉFENSIF ---
-BOOT_ERROR = None
+# Chargement des variables d'environnement
+load_dotenv()
 
-try:
-    import json
-    import csv
-    import io
-    import math
-    import uuid
-    import re
-    from datetime import datetime
-    from pathlib import Path
-    from functools import wraps
+# Configuration Flask
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 52428800))
+app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
 
-    # S'assurer que le dossier courant est accessible
-    sys.path.append(os.getcwd())
+# Configuration CORS
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
-    import pandas as pd
-    from flask import Flask, request, jsonify, send_file
-    from flask_cors import CORS
-    from dotenv import load_dotenv
-    from supabase import create_client, Client
-    from utils import snake_case
-    from processor import ProcessorFactory
-
-    # Chargement des variables d'environnement
-    load_dotenv()
-
-    import pandas as pd
-    from flask import Flask, request, jsonify, send_file
-    from flask_cors import CORS
-    from dotenv import load_dotenv
-    from supabase import create_client, Client
-    from utils import snake_case
-    from processor import ProcessorFactory
-
-    # Chargement des variables d'environnement
-    load_dotenv()
-
-    app = Flask(__name__)
-    app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 52428800))
-    app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
-
-except Exception as e:
-    BOOT_ERROR = str(e)
-    import traceback
-    BOOT_TRACEBACK = traceback.format_exc()
-    sys.stderr.write(f"CRITICAL BOOT ERROR: {BOOT_ERROR}\n{BOOT_TRACEBACK}\n")
-    
-    from flask import Flask, jsonify as flask_jsonify
-    app = Flask(__name__)
-    
-    @app.route('/', defaults={'path': ''})
-    @app.route('/<path:path>')
-    def survival_mode(path):
-        # On utilise une string brute pour être GARANTI que ça ne crash pas
-        safe_boot_msg = BOOT_ERROR.replace('"', '\\"')
-        return f"""{{
-            "status": "error",
-            "stage": "bootstrap",
-            "message": "Le serveur n'a pas pu démarrer correctement.",
-            "error": "{safe_boot_msg}",
-            "hint": "Vérifiez les dépendances dans le Dockerfile ou les variables d'environnement."
-        }}""", 500, {'Content-Type': 'application/json'}
-
-    # Dummies pour éviter les NameError lors du chargement du reste du fichier
-    def dummy_func(*args, **kwargs): return None
-    def dummy_decorator(*args, **kwargs): return lambda f: f
-    send_file = jsonify = dummy_func
-    wraps = dummy_decorator
-    CORS = dummy_func
-    pd = type('pd', (), {'isna': dummy_func, 'read_excel': dummy_func, 'read_csv': dummy_func, 'DataFrame': type('DF', (), {}), 'Timestamp': type('TS', (), {}), 'Timedelta': type('TD', (), {})})
-    snake_case = lambda x: str(x)
-    ProcessorFactory = type('PF', (), {'get_processor': dummy_func})
-    Client = object
-    ALLOWED_EXTENSIONS = set()
-    MAX_PREVIEW_ROWS = 0
-    # On définit aussi les objets importés de flask qui pourraient manquer
-    request = type('req', (), {'get_json': dummy_func, 'files': {}})
-
-if BOOT_ERROR is None:
-    # --- LOGIQUE NORMALE DE L'APPLICATION ---
-
-    @app.errorhandler(Exception)
-    def handle_exception(e):
-        """Retourne les erreurs système en JSON au lieu de HTML."""
-        msg = str(e)
-        logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
-        # On évite le bloc try/jsonify risqué et on utilise une structure simple
-        try:
-            return jsonify({
-                "error": "Internal Server Error",
-                "message": msg,
-                "status": "error"
-            }), 500
-        except:
-            # Fallback manuel si jsonify échoue
-            return f'{{"error": "Internal Server Error", "message": "{msg}"}}', 500
-
-    @app.route('/api/debug', methods=['GET'])
-    def diagnostic_debug():
-        """Endpoint de diagnostic minimal sans dépendance Supabase."""
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Retourne les erreurs système en JSON au lieu de HTML."""
+    msg = str(e)
+    logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
+    try:
         return jsonify({
-            "status": "ok",
-            "message": "Backend is alive",
-            "cwd": os.getcwd(),
-            "python": sys.version,
-            "env": {k: "set" if v else "unset" for k, v in os.environ.items() if "SUPABASE" in k}
-        })
+            "error": "Internal Server Error",
+            "message": msg,
+            "status": "error"
+        }), 500
+    except:
+        return f'{{"error": "Internal Server Error", "message": "{msg}"}}', 500
 
-    # Configuration CORS
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": "*",
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"]
-        }
+@app.route('/api/debug', methods=['GET'])
+def diagnostic_debug():
+    """Endpoint de diagnostic minimal."""
+    return jsonify({
+        "status": "ok",
+        "message": "Backend is alive",
+        "python": sys.version,
+        "cwd": os.getcwd()
     })
 
-    # Extensions autorisées
-    ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
-    MAX_PREVIEW_ROWS = 10
+# Extensions autorisées
+ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
+MAX_PREVIEW_ROWS = 10
 
 # ============================================================================
 # ROUTES STATIQUES
