@@ -9,6 +9,26 @@
 -- DROP FUNCTION IF EXISTS public.get_public_tables();
 -- DROP FUNCTION IF EXISTS public.get_table_columns(text);
 -- DROP TABLE IF EXISTS public.import_templates;
+-- DROP TABLE IF EXISTS public.hotels;
+
+-- ============================================================================
+-- TABLE: hotels
+-- Stocke les informations des hôtels gérés
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.hotels (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    hotel_id TEXT NOT NULL UNIQUE,
+    hotel_name TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Activation de la sécurité (RLS)
+ALTER TABLE public.hotels ENABLE ROW LEVEL SECURITY;
+
+-- Politique : Autoriser toutes les opérations pour le rôle service_role (Admin)
+CREATE POLICY "Allow all for service role" ON public.hotels
+    FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================================
 -- TABLE: import_templates

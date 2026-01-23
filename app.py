@@ -23,6 +23,8 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
+from processor import ProcessorFactory
+
 # Configuration des logs
 logging.basicConfig(
     level=logging.INFO,
@@ -1271,6 +1273,119 @@ def apply_template(template_id):
         })
     
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# ROUTES HOTELS
+# ============================================================================
+
+@app.route('/api/hotels', methods=['GET'])
+def get_hotels():
+    """
+    Récupère la liste des hôtels.
+    """
+    try:
+        supabase = get_supabase_client()
+        result = supabase.table('hotels').select('*').order('hotel_name').execute()
+        return jsonify({'hotels': result.data})
+    except Exception as e:
+        logger.error(f"ERREUR GET /api/hotels: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/hotels', methods=['POST'])
+def create_hotel():
+    """
+    Crée un nouvel hôtel.
+    """
+    data = request.get_json()
+    hotel_id = data.get('hotel_id')
+    hotel_name = data.get('hotel_name')
+    
+    if not hotel_id or not hotel_name:
+        return jsonify({'error': 'hotel_id et hotel_name sont requis'}), 400
+    
+    try:
+        supabase = get_supabase_client()
+        # Vérifier si l'id existe déjà
+        exist = supabase.table('hotels').select('id').eq('hotel_id', hotel_id).execute()
+        if exist.data:
+            return jsonify({'error': f"L'ID hôtel '{hotel_id}' existe déjà"}), 400
+            
+        result = supabase.table('hotels').insert({
+            'hotel_id': hotel_id,
+            'hotel_name': hotel_name
+        }).execute()
+        
+        return jsonify({
+            'success': True,
+            'hotel': result.data[0]
+        })
+    except Exception as e:
+        logger.error(f"ERREUR POST /api/hotels: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/hotels/<id>', methods=['DELETE'])
+def delete_hotel(id):
+    """
+    Supprime un hôtel.
+    """
+    try:
+        supabase = get_supabase_client()
+        supabase.table('hotels').delete().eq('id', id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"ERREUR DELETE /api/hotels: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/auto-process', methods=['POST'])
+def auto_process():
+    """
+    Traitement automatique utilisant le moteur modulaire.
+    """
+    data = request.get_json()
+    filename = data.get('filename')
+    category = data.get('category')
+    hotel_id = data.get('hotel_id')
+    tab_name = data.get('tab_name')
+    
+    if not all([filename, category, hotel_id]):
+        return jsonify({'error': 'filename, category et hotel_id sont requis'}), 400
+        
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(file_path):
+        return jsonify({'error': f"Fichier non trouvé: {filename}"}), 404
+        
+    try:
+        supabase = get_supabase_client()
+        
+        # Initialiser le processeur via la factory
+        processor = ProcessorFactory.get_processor(
+            category, 
+            file_path, 
+            hotel_id, 
+            supabase, 
+            tab_name=tab_name
+        )
+        
+        # Exécuter les transformations
+        processor.apply_transformations()
+        
+        # Pousser vers Supabase
+        rows_inserted = processor.push_to_supabase()
+        
+        return jsonify({
+            'success': True,
+            'category': category,
+            'target_table': processor.target_table,
+            'rows_inserted': rows_inserted
+        })
+        
+    except Exception as e:
+        logger.error(f"ERREUR /api/auto-process: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 

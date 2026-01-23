@@ -478,12 +478,35 @@
         <div class="main-layout">
             <aside class="sidebar">
                 <div class="sidebar-section">
+                    <h3 class="sidebar-title">Mode d'utilisation</h3>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button id="btnModeManual" class="btn btn-primary btn-sm"
+                            style="width: 100%; justify-content: flex-start;" onclick="window.switchAppMode('manual')">
+                            <span>🛠️ Assistant (Manuel)</span>
+                        </button>
+                        <button id="btnModeAuto" class="btn btn-secondary btn-sm"
+                            style="width: 100%; justify-content: flex-start;" onclick="window.switchAppMode('auto')">
+                            <span>🚀 Automatique (Expert)</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="sidebar-section">
                     <h3 class="sidebar-title">Templates</h3>
                     <ul class="template-list" id="templateList">
                         <li class="template-item">
                             <div class="template-item-name">Chargement...</div>
                         </li>
                     </ul>
+                </div>
+                <!-- Section Hôtels -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">Configuration</h3>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button class="btn btn-secondary btn-sm" style="width: 100%; justify-content: flex-start;"
+                            onclick="window.openHotelManager()">
+                            <span>🏨 Gérer les hôtels</span>
+                        </button>
+                    </div>
                 </div>
                 <!-- Section Cache -->
                 <div class="sidebar-section">
@@ -505,7 +528,59 @@
                 </div>
             </aside>
             <main class="main-content">
-                <div class="wizard">
+                <!-- MODE AUTOMATIQUE -->
+                <section class="card fade-in" id="autoModeContainer" style="display: none;">
+                    <div class="card-header">
+                        <h2 class="card-title">🚀 Traitement Automatique (One-Click)</h2>
+                    </div>
+                    <div class="stats-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 24px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">1. Choisir l'Hôtel</label>
+                            <select class="form-select" id="autoHotelId">
+                                <option value="">Choisir un hôtel...</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">2. Catégorie de Rapport</label>
+                            <select class="form-select" id="autoCategory">
+                                <option value="">Détecter automatiquement...</option>
+                                <option value="RAPPORT PLANNING D-EDGE">D-EDGE Planning (Tarifs/Dispo)</option>
+                                <option value="RAPPORT RÉSERVATIONS EN COURS D-EDGE">D-EDGE Réservations en cours
+                                </option>
+                                <option value="RAPPORT HISTORIQUE DES RÉSERVATIONS">D-EDGE Historique Réservations
+                                </option>
+                                <option value="RAPPORT OTA INSIGHT">OTA Insight (Multi-onglets)</option>
+                                <option value="DATES SALONS ET ÉVÉNEMENTS">Salons & Événements</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="otaTabsContainer"
+                        style="display: none; margin-bottom: 24px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px; border: 1px dashed var(--border-color);">
+                        <label class="form-label">Sélectionner l'onglet OTA Insight</label>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="otaTabsButtons">
+                            <!-- Buttons injected by JS -->
+                        </div>
+                    </div>
+
+                    <div class="dropzone" id="autoDropzone">
+                        <div class="dropzone-icon">📥</div>
+                        <div class="dropzone-text">Déposez le fichier pour traitement immédiat</div>
+                        <div class="dropzone-subtext">Le fichier sera transformé et envoyé vers Supabase selon les
+                            règles expertes</div>
+                        <input type="file" id="autoFileInput" accept=".xlsx,.xls,.csv">
+                    </div>
+
+                    <div id="autoStatus" style="margin-top: 24px; display: none;">
+                        <div class="message" id="autoStatusMessage"></div>
+                        <div style="margin-top: 16px; max-height: 200px; overflow-y: auto; background: #000; color: #0f0; padding: 12px; font-family: monospace; font-size: 12px; border-radius: 4px;"
+                            id="autoLogs">
+                            > Prêt pour le traitement...
+                        </div>
+                    </div>
+                </section>
+
+                <div class="wizard" id="manualWizard">
                     <div class="wizard-steps">
                         <div class="wizard-step active" data-step="1">
                             <div class="step-number">1</div>
@@ -621,8 +696,14 @@
                                     style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">(Sera
                                     ajouté à chaque ligne importée)</span>
                             </label>
-                            <input type="text" class="form-input" id="hotelIdInput" value="Primary"
-                                placeholder="ex: Paris-01, Lyon-Sud...">
+                            <select class="form-select" id="hotelIdInput">
+                                <option value="">Choisir un hôtel...</option>
+                            </select>
+                            <div style="margin-top: 8px;">
+                                <a href="javascript:void(0)" onclick="window.openHotelManager()"
+                                    style="color: var(--supabase-green); font-size: 0.8rem; text-decoration: none;">+
+                                    Gérer les hôtels</a>
+                            </div>
                         </div>
                         <div class="btn-group">
                             <button class="btn btn-secondary" onclick="goToStep(1)">Precedent</button>
@@ -729,6 +810,47 @@
                             <strong>Cache :</strong> Utilisez le bouton "Gérer le cache" dans la barre latérale pour
                             voir les fichiers temporaires stockés sur le serveur et libérer de l'espace si besoin.
                         </p>
+                    </div>
+                </div>
+
+                <!-- Modal Gestion des Hôtels -->
+                <div class="modal" id="hotelModal">
+                    <div class="modal-content" style="max-width: 700px;">
+                        <div class="modal-header">
+                            <h2 class="modal-title">🏨 Gestion des Hôtels</h2>
+                            <button class="btn btn-secondary btn-sm" onclick="closeModal('hotelModal')">X</button>
+                        </div>
+                        <div
+                            style="margin-bottom: 24px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px;">
+                            <h3 style="font-size: 0.9rem; margin-bottom: 12px; color: var(--supabase-green);">Ajouter un
+                                nouvel hôtel</h3>
+                            <div
+                                style="display: grid; grid-template-columns: 1fr 2fr auto; gap: 12px; align-items: end;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" style="font-size: 0.8rem;">ID Hôtel (ex: H001)</label>
+                                    <input type="text" class="form-input" id="newHotelId" placeholder="ID unique">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" style="font-size: 0.8rem;">Nom de l'hôtel</label>
+                                    <input type="text" class="form-input" id="newHotelName" placeholder="Nom complet">
+                                </div>
+                                <button class="btn btn-primary" onclick="window.createHotel()">Ajouter</button>
+                            </div>
+                        </div>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID Hôtel</th>
+                                        <th>Nom</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="hotelListContainer">
+                                    <!-- Liste des hôtels injectée ici -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
@@ -1534,6 +1656,237 @@
                 }
             }
 
+            window.openHotelManager = function () {
+                var modal = document.getElementById('hotelModal');
+                if (modal) {
+                    modal.style.display = 'block';
+                    loadHotelList();
+                }
+            }
+
+            window.closeModal = function (modalId) {
+                var modal = document.getElementById(modalId);
+                if (modal) modal.style.display = 'none';
+            }
+
+            function loadHotelList() {
+                var container = document.getElementById('hotelListContainer');
+                if (!container) return;
+                container.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 20px;">Chargement...</td></tr>';
+
+                fetch(API_BASE + '/hotels')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.hotels && data.hotels.length > 0) {
+                            window.state.hotels = data.hotels; // Store in global state
+                            container.innerHTML = data.hotels.map(h => `
+                                <tr>
+                                    <td><strong>${h.hotel_id}</strong></td>
+                                    <td>${h.hotel_name}</td>
+                                    <td>
+                                        <button class="btn btn-secondary btn-sm" onclick="window.deleteHotel('${h.id}')">🗑️</button>
+                                    </td>
+                                </tr>
+                            `).join('');
+                            updateHotelSelects(); // Sync dropdowns
+                        } else {
+                            container.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 20px;">Aucun hôtel enregistré</td></tr>';
+                        }
+                    })
+                    .catch(err => {
+                        container.innerHTML = '<tr><td colspan="3" style="text-align:center; color: #EF4444;">Erreur: ' + err.message + '</td></tr>';
+                    });
+            }
+
+            window.createHotel = function () {
+                var idInput = document.getElementById('newHotelId');
+                var nameInput = document.getElementById('newHotelName');
+                var hotel_id = idInput.value.trim();
+                var hotel_name = nameInput.value.trim();
+
+                if (!hotel_id || !hotel_name) {
+                    alert('Veuillez remplir tous les champs');
+                    return;
+                }
+
+                fetch(API_BASE + '/hotels', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hotel_id, hotel_name })
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            idInput.value = '';
+                            nameInput.value = '';
+                            loadHotelList();
+                        } else {
+                            alert('Erreur: ' + (data.error || 'Inconnue'));
+                        }
+                    })
+                    .catch(err => alert('Erreur: ' + err.message));
+            }
+
+            window.deleteHotel = function (id) {
+                if (!confirm('Supprimer cet hôtel ?')) return;
+                fetch(API_BASE + '/hotels/' + id, { method: 'DELETE' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) loadHotelList();
+                        else alert('Erreur: ' + (data.error || 'Inconnue'));
+                    })
+                    .catch(err => alert('Erreur: ' + err.message));
+            }
+
+            window.switchAppMode = function (mode) {
+                var manual = document.getElementById('manualWizard');
+                var auto = document.getElementById('autoModeContainer');
+                var btnManual = document.getElementById('btnModeManual');
+                var btnAuto = document.getElementById('btnModeAuto');
+
+                if (mode === 'auto') {
+                    manual.style.display = 'none';
+                    auto.style.display = 'block';
+                    btnManual.className = 'btn btn-secondary btn-sm';
+                    btnAuto.className = 'btn btn-primary btn-sm';
+                } else {
+                    manual.style.display = 'block';
+                    auto.style.display = 'none';
+                    btnManual.className = 'btn btn-primary btn-sm';
+                    btnAuto.className = 'btn btn-secondary btn-sm';
+                }
+            }
+
+            function updateHotelSelects() {
+                var selects = ['hotelIdInput', 'autoHotelId']; // Both manual and auto
+                selects.forEach(id => {
+                    var sel = document.getElementById(id);
+                    if (!sel) return;
+                    var currentVal = sel.value;
+                    sel.innerHTML = '<option value="">Choisir un hôtel...</option>' +
+                        (window.state.hotels || []).map(h => `<option value="${h.hotel_id}">${h.hotel_name} (${h.hotel_id})</option>`).join('');
+                    if (currentVal) sel.value = currentVal;
+                });
+            }
+
+            // --- Logique Mode Automatique ---
+            var autoDropzone = document.getElementById('autoDropzone');
+            var autoFileInput = document.getElementById('autoFileInput');
+
+            if (autoDropzone && autoFileInput) {
+                autoDropzone.onclick = () => autoFileInput.click();
+                autoDropzone.ondragover = (e) => { e.preventDefault(); autoDropzone.classList.add('active'); };
+                autoDropzone.ondragleave = () => autoDropzone.classList.remove('active');
+                autoDropzone.ondrop = (e) => {
+                    e.preventDefault();
+                    autoDropzone.classList.remove('active');
+                    if (e.dataTransfer.files.length) handleAutoFile(e.dataTransfer.files[0]);
+                };
+                autoFileInput.onchange = (e) => {
+                    if (e.target.files.length) handleAutoFile(e.target.files[0]);
+                };
+            }
+
+            function handleAutoFile(file) {
+                var hotelId = document.getElementById('autoHotelId').value;
+                var category = document.getElementById('autoCategory').value;
+
+                if (!hotelId) { alert('Veuillez sélectionner un hôtel d\'abord'); return; }
+
+                // Reset UI
+                var status = document.getElementById('autoStatus');
+                var msg = document.getElementById('autoStatusMessage');
+                var logs = document.getElementById('autoLogs');
+                status.style.display = 'block';
+                msg.className = 'message message-info';
+                msg.innerHTML = '<strong>Upload en cours...</strong>';
+                logs.innerHTML = '> Analyse du fichier: ' + file.name + '\n';
+
+                // Step 1: Upload
+                var formData = new FormData();
+                formData.append('file', file);
+
+                fetch(API_BASE + '/upload', { method: 'POST', body: formData })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.error) throw new Error(data.error);
+                        logs.innerHTML += '> Upload réussi.\n';
+
+                        // Si catégorie Auto, on peut tenter de détecter via le nom du fichier
+                        if (!category) {
+                            category = detectCategory(file.name);
+                            if (category) {
+                                logs.innerHTML += '> Catégorie détectée: ' + category + '\n';
+                                document.getElementById('autoCategory').value = category;
+                            } else {
+                                throw new Error('Catégorie non détectée. Veuillez la sélectionner manuellement.');
+                            }
+                        }
+
+                        // OTA Insight Special Case: Need to ask for tab if not provided
+                        if (category === 'RAPPORT OTA INSIGHT') {
+                            showOtaTabSelector(data.filename, hotelId, category);
+                            return;
+                        }
+
+                        // Step 2: Auto Process
+                        return triggerAutoProcess(data.filename, hotelId, category);
+                    })
+                    .catch(err => {
+                        msg.className = 'message message-error';
+                        msg.innerHTML = '<strong>Erreur:</strong> ' + err.message;
+                        logs.innerHTML += '!! ERREUR: ' + err.message + '\n';
+                    });
+            }
+
+            function detectCategory(filename) {
+                var fn = filename.toUpperCase();
+                if (fn.includes('PLANNING')) return 'RAPPORT PLANNING D-EDGE';
+                if (fn.includes('RESERVATIONS EN COURS')) return 'RAPPORT RÉSERVATIONS EN COURS D-EDGE';
+                if (fn.includes('HISTORIQUE')) return 'RAPPORT HISTORIQUE DES RÉSERVATIONS';
+                if (fn.includes('OTA')) return 'RAPPORT OTA INSIGHT';
+                if (fn.includes('SALON') || fn.includes('EVENEMENT')) return 'DATES SALONS ET ÉVÉNEMENTS';
+                return null;
+            }
+
+            function triggerAutoProcess(filename, hotelId, category, tabName = null) {
+                var msg = document.getElementById('autoStatusMessage');
+                var logs = document.getElementById('autoLogs');
+
+                logs.innerHTML += '> Lancement du traitement expert...\n';
+
+                return fetch(API_BASE + '/auto-process', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename, hotel_id: hotelId, category, tab_name: tabName })
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.error) throw new Error(data.error);
+                        msg.className = 'message message-success';
+                        msg.innerHTML = '<strong>Succès !</strong> ' + data.rows_inserted + ' lignes importées dans ' + data.target_table;
+                        logs.innerHTML += '> Traitement terminé avec succès.\n';
+                        logs.innerHTML += '> Table: ' + data.target_table + '\n';
+                        logs.innerHTML += '> Lignes: ' + data.rows_inserted + '\n';
+                    });
+            }
+
+            function showOtaTabSelector(filename, hotelId, category) {
+                var container = document.getElementById('otaTabsContainer');
+                var btnGrid = document.getElementById('otaTabsButtons');
+                container.style.display = 'block';
+
+                var tabs = ["Aperçu", "Tarifs", "vs. Hier", "vs. 3 jours", "vs. 7 jours"];
+                btnGrid.innerHTML = tabs.map(t => `<button class="btn btn-outline-primary btn-sm" onclick="window.processOtaTab('${filename}', '${hotelId}', '${category}', '${t}')">${t}</button>`).join('');
+
+                document.getElementById('autoStatusMessage').innerHTML = '<strong>Attention:</strong> Fichier OTA Insight détecté. Veuillez choisir l\'onglet à importer.';
+            }
+
+            window.processOtaTab = function (filename, hotelId, category, tabName) {
+                document.getElementById('otaTabsContainer').style.display = 'none';
+                triggerAutoProcess(filename, hotelId, category, tabName);
+            }
+
             window.openCacheManager = function () {
                 var modal = document.getElementById('cacheModal');
                 if (modal) {
@@ -1549,6 +1902,7 @@
 
             function loadCacheList() {
                 var container = document.getElementById('cacheListContainer');
+                if (!container) return;
                 container.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px;">Chargement...</td></tr>';
 
                 fetch(API_BASE + '/cache')
@@ -1598,6 +1952,12 @@
                         }
                     })
                     .catch(err => alert('Erreur: ' + err.message));
+            }
+
+            function initializeApp() {
+                loadTables();
+                loadTemplates();
+                loadHotelList(); // Added to load hotels on start
             }
 
             document.addEventListener('DOMContentLoaded', initializeApp);
