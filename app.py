@@ -563,13 +563,21 @@ def health_check():
     try:
         supabase = get_supabase_client()
         # Faire un petit appel léger pour tester la connexion
+        # Si 'get_public_tables' n'existe pas, cela lèvera une erreur
         supabase.rpc('get_public_tables').execute()
         status['supabase'] = 'connected'
     except Exception as e:
-        logger.error(f"ERREUR HEALTH CHECK: {str(e)}")
-        status['supabase'] = 'error'
-        status['supabase_error'] = str(e)
-        status['status'] = 'degraded'
+        err_msg = str(e)
+        logger.error(f"ERREUR HEALTH CHECK: {err_msg}")
+        
+        if 'function' in err_msg and 'does not exist' in err_msg:
+             status['supabase'] = 'connected_no_schema'
+             status['supabase_error'] = 'Fonctions DB manquantes. Exécutez setup_db.sql'
+             status['status'] = 'maintenance'
+        else:
+            status['supabase'] = 'error'
+            status['supabase_error'] = err_msg
+            status['status'] = 'degraded'
         
     return jsonify(status)
 
@@ -1291,6 +1299,15 @@ def get_hotels():
         return jsonify({'hotels': result.data})
     except Exception as e:
         logger.error(f"ERREUR GET /api/hotels: {str(e)}")
+        
+        # Détection spécifique de l'erreur "table manquante"
+        err_msg = str(e)
+        if '42P01' in err_msg or 'relation' in err_msg and 'does not exist' in err_msg:
+            return jsonify({
+                'error': 'Base de données non initialisée (Table "hotels" manquante).',
+                'suggestion': 'Veuillez exécuter le script "setup_db.sql" dans votre Supabase Dashboard > SQL Editor.'
+            }), 503
+            
         return jsonify({'error': str(e)}), 500
 
 

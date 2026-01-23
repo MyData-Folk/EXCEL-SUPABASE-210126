@@ -1825,12 +1825,12 @@
 
                         // OTA Insight Special Case: Need to ask for tab if not provided
                         if (category === 'RAPPORT OTA INSIGHT') {
-                            showOtaTabSelector(data.filename, hotelId, category);
+                            showOtaTabSelector(data.filepath, hotelId, category);
                             return;
                         }
 
                         // Step 2: Auto Process
-                        return triggerAutoProcess(data.filename, hotelId, category);
+                        return triggerAutoProcess(data.filepath, hotelId, category);
                     })
                     .catch(err => {
                         msg.className = 'message message-error';
