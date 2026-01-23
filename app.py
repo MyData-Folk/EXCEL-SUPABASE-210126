@@ -1,106 +1,116 @@
-"""
-Supabase Auto-Importer (RMS Sync) v2.0
-Backend Flask - Application principale
-
-Auteur: MiniMax Agent
-Date: 21 Janvier 2026
-"""
-
 import os
 import sys
-import json
-import csv
-import io
-import math
-import uuid
-import re
 import logging
-from datetime import datetime
-from pathlib import Path
-from functools import wraps
 
-# S'assurer que le dossier courant est accessible
-sys.path.append(os.getcwd())
-
-import pandas as pd
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
-from dotenv import load_dotenv
-from supabase import create_client, Client
-from utils import snake_case
-
-from processor import ProcessorFactory
-
-# Configuration des logs
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[logging.StreamHandler()]
-)
+# Configuration minimale des logs pour capture immédiate
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
+# --- BOOTSTRAP DÉFENSIF ---
+BOOT_ERROR = None
 
-# Chargement des variables d'environnement
-load_dotenv()
+try:
+    import json
+    import csv
+    import io
+    import math
+    import uuid
+    import re
+    from datetime import datetime
+    from pathlib import Path
+    from functools import wraps
 
-# Configurer Flask pour gérer NaN/Inf de manière sécurisée
-from flask.json.provider import DefaultJSONProvider
+    # S'assurer que le dossier courant est accessible
+    sys.path.append(os.getcwd())
 
-class CustomJSONProvider(DefaultJSONProvider):
-    def dumps(self, obj, **kwargs):
-        kwargs.setdefault('ignore_nan', True)
-        return super().dumps(obj, **kwargs)
+    import pandas as pd
+    from flask import Flask, request, jsonify, send_file
+    from flask_cors import CORS
+    from dotenv import load_dotenv
+    from supabase import create_client, Client
+    from utils import snake_case
+    from processor import ProcessorFactory
 
-# Configuration Flask
-app = Flask(__name__)
-app.json_provider_class = CustomJSONProvider
-# Initialisation différée du provider pour éviter les crashs au boot
-app.json = CustomJSONProvider(app)
-app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 52428800))
-app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
+    # Chargement des variables d'environnement
+    load_dotenv()
 
-@app.errorhandler(Exception)
-def handle_exception(e):
-    """Retourne les erreurs système en JSON au lieu de HTML."""
-    try:
-        msg = str(e)
-        logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
+    # Configurer Flask pour gérer NaN/Inf de manière sécurisée
+    from flask.json.provider import DefaultJSONProvider
+
+    class CustomJSONProvider(DefaultJSONProvider):
+        def dumps(self, obj, **kwargs):
+            kwargs.setdefault('ignore_nan', True)
+            return super().dumps(obj, **kwargs)
+
+    app = Flask(__name__)
+    app.json_provider_class = CustomJSONProvider
+    app.json = CustomJSONProvider(app)
+    
+    app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 52428800))
+    app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
+
+except Exception as e:
+    BOOT_ERROR = str(e)
+    import traceback
+    BOOT_TRACEBACK = traceback.format_exc()
+    sys.stderr.write(f"CRITICAL BOOT ERROR: {BOOT_ERROR}\n{BOOT_TRACEBACK}\n")
+    
+    from flask import Flask, jsonify
+    app = Flask(__name__)
+    
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def survival_mode(path):
         return jsonify({
-            "error": "Internal Server Error",
-            "message": msg,
-            "type": type(e).__name__,
-            "status": "error"
+            "status": "error",
+            "stage": "bootstrap",
+            "message": "Le serveur n'a pas pu démarrer correctement.",
+            "error": BOOT_ERROR,
+            "traceback": BOOT_TRACEBACK.split('\n'),
+            "hint": "Vérifiez les dépendances dans le Dockerfile ou les variables d'environnement."
         }), 500
-    except:
-        # Fallback ultime si jsonify lui-même plante
-        return '{"error": "Fatal Error", "message": "Failed to serialize error"}', 500
 
-@app.route('/api/debug', methods=['GET'])
-def diagnostic_debug():
-    """Endpoint de diagnostic minimal sans dépendance Supabase."""
-    return jsonify({
-        "status": "ok",
-        "message": "Backend is alive",
-        "cwd": os.getcwd(),
-        "python": sys.version,
-        "env": {k: "set" if v else "unset" for k, v in os.environ.items() if "SUPABASE" in k}
+if BOOT_ERROR is None:
+    # --- LOGIQUE NORMALE DE L'APPLICATION ---
+
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        """Retourne les erreurs système en JSON au lieu de HTML."""
+        try:
+            msg = str(e)
+            logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
+            return jsonify({
+                "error": "Internal Server Error",
+                "message": msg,
+                "type": type(e).__name__,
+                "status": "error"
+            }), 500
+        except:
+            return '{"error": "Fatal Error", "message": "Failed to serialize error"}', 500
+
+    @app.route('/api/debug', methods=['GET'])
+    def diagnostic_debug():
+        """Endpoint de diagnostic minimal sans dépendance Supabase."""
+        return jsonify({
+            "status": "ok",
+            "message": "Backend is alive",
+            "cwd": os.getcwd(),
+            "python": sys.version,
+            "env": {k: "set" if v else "unset" for k, v in os.environ.items() if "SUPABASE" in k}
+        })
+
+    # Configuration CORS
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"]
+        }
     })
 
-# Configuration CORS
-CORS(app, resources={
-    r"/api/*": {
-        "origins": "*",
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
-    }
-})
-
-# Extensions autorisées
-ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
-MAX_PREVIEW_ROWS = 10
+    # Extensions autorisées
+    ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
+    MAX_PREVIEW_ROWS = 10
 
 # ============================================================================
 # ROUTES STATIQUES
