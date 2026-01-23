@@ -65,13 +65,29 @@ app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Retourne les erreurs système en JSON au lieu de HTML."""
-    msg = str(e)
-    logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
+    try:
+        msg = str(e)
+        logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
+        return jsonify({
+            "error": "Internal Server Error",
+            "message": msg,
+            "type": type(e).__name__,
+            "status": "error"
+        }), 500
+    except:
+        # Fallback ultime si jsonify lui-même plante
+        return '{"error": "Fatal Error", "message": "Failed to serialize error"}', 500
+
+@app.route('/api/debug', methods=['GET'])
+def diagnostic_debug():
+    """Endpoint de diagnostic minimal sans dépendance Supabase."""
     return jsonify({
-        "error": "Internal Server Error",
-        "message": msg,
-        "type": type(e).__name__
-    }), 500
+        "status": "ok",
+        "message": "Backend is alive",
+        "cwd": os.getcwd(),
+        "python": sys.version,
+        "env": {k: "set" if v else "unset" for k, v in os.environ.items() if "SUPABASE" in k}
+    })
 
 # Configuration CORS
 CORS(app, resources={
