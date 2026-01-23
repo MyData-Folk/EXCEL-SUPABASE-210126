@@ -11,15 +11,16 @@ import sys
 import json
 import csv
 import io
-
-# S'assurer que le dossier courant est dans le path (important pour Docker/Gunicorn)
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import math
 import uuid
 import re
 import logging
 from datetime import datetime
 from pathlib import Path
 from functools import wraps
+
+# S'assurer que le dossier courant est accessible
+sys.path.append(os.getcwd())
 
 import pandas as pd
 from flask import Flask, request, jsonify, send_file
@@ -29,9 +30,6 @@ from supabase import create_client, Client
 from utils import snake_case
 
 from processor import ProcessorFactory
-
-import math
-import numpy as np
 
 # Configuration des logs
 logging.basicConfig(
@@ -48,18 +46,18 @@ logger = logging.getLogger(__name__)
 # Chargement des variables d'environnement
 load_dotenv()
 
-# Configurer Flask pour gérer NaN/Inf de manière sécurisée (transforme en null)
+# Configurer Flask pour gérer NaN/Inf de manière sécurisée
 from flask.json.provider import DefaultJSONProvider
 
 class CustomJSONProvider(DefaultJSONProvider):
     def dumps(self, obj, **kwargs):
-        # Forcer ignore_nan pour éviter les crashs sur float('nan')
         kwargs.setdefault('ignore_nan', True)
         return super().dumps(obj, **kwargs)
 
 # Configuration Flask
 app = Flask(__name__)
 app.json_provider_class = CustomJSONProvider
+# Initialisation différée du provider pour éviter les crashs au boot
 app.json = CustomJSONProvider(app)
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 52428800))
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
@@ -508,8 +506,8 @@ def dataframe_to_json_records(df):
                     clean_record[k] = value.strftime('%Y-%m-%d')
                 elif isinstance(value, pd.Timedelta):
                     clean_record[k] = str(value)
-                elif isinstance(value, (int, float, np.number)):
-                    # Nettoyage Inf et NaN pour les nombres (y compris numpy)
+                elif isinstance(value, (int, float)):
+                    # Nettoyage Inf et NaN pour les nombres
                     if not math.isfinite(value) or pd.isna(value):
                         clean_record[k] = None
                     else:

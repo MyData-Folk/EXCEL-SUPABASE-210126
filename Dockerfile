@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir \
     Flask-Cors==4.0.0 \
     gunicorn==21.2.0 \
     pandas==2.2.0 \
+    numpy==1.26.4 \
     openpyxl==3.1.2 \
     xlrd==2.0.1 \
     supabase==2.27.2 \
