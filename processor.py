@@ -32,9 +32,18 @@ class BaseProcessor:
         pass
 
     def inject_hotel_id(self):
-        """Injecte systématiquement la colonne hotel_id."""
+        """
+        Injecte la colonne hotel_id.
+        Si la colonne existe déjà, on NE TAOUCHE PAS aux données existantes (demande user).
+        Sinon, on la crée et on la remplit avec self.hotel_id.
+        """
         if self.df is not None:
-            self.df['hotel_id'] = self.hotel_id
+            if 'hotel_id' not in self.df.columns:
+                self.df['hotel_id'] = self.hotel_id
+            else:
+                # Optionnel: Remplir les valeurs manquantes (NaN) seulement ?
+                # Pour l'instant on suit "il ne faudra rien faire" à la lettre
+                logger.info("Colonne hotel_id détectée dans le fichier, injection ignorée.")
 
     def normalize_dates(self, date_columns):
         """Normalise les colonnes de date au format YYYY-MM-DD."""
