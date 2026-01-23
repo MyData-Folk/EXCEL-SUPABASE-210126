@@ -34,18 +34,18 @@ try:
     # Chargement des variables d'environnement
     load_dotenv()
 
-    # Configurer Flask pour gérer NaN/Inf de manière sécurisée
-    from flask.json.provider import DefaultJSONProvider
+    import pandas as pd
+    from flask import Flask, request, jsonify, send_file
+    from flask_cors import CORS
+    from dotenv import load_dotenv
+    from supabase import create_client, Client
+    from utils import snake_case
+    from processor import ProcessorFactory
 
-    class CustomJSONProvider(DefaultJSONProvider):
-        def dumps(self, obj, **kwargs):
-            kwargs.setdefault('ignore_nan', True)
-            return super().dumps(obj, **kwargs)
+    # Chargement des variables d'environnement
+    load_dotenv()
 
     app = Flask(__name__)
-    app.json_provider_class = CustomJSONProvider
-    app.json = CustomJSONProvider(app)
-    
     app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 52428800))
     app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
 
