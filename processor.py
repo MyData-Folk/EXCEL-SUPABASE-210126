@@ -84,10 +84,19 @@ class DedgePlanningProcessor(BaseProcessor):
         dates = []
         for val in date_row[2:]:
             try:
-                # Tenter de convertir en date propre
-                d = pd.to_datetime(val)
+                if pd.isna(val):
+                    dates.append(None)
+                    continue
+                
+                if isinstance(val, (int, float)):
+                    # Excel: 30/12/1899 est le jour 0
+                    d = pd.to_datetime(val, unit='D', origin='1899-12-30')
+                else:
+                    d = pd.to_datetime(val, dayfirst=True)
+                
                 dates.append(d.strftime('%Y-%m-%d'))
-            except:
+            except Exception as e:
+                logger.warning(f"Erreur parsing date {val}: {e}")
                 dates.append(None)
         
         # Données utiles à partir de Row 4
