@@ -61,14 +61,15 @@ except Exception as e:
     @app.route('/', defaults={'path': ''})
     @app.route('/<path:path>')
     def survival_mode(path):
-        return flask_jsonify({
+        # On utilise une string brute pour être GARANTI que ça ne crash pas
+        safe_boot_msg = BOOT_ERROR.replace('"', '\\"')
+        return f"""{{
             "status": "error",
             "stage": "bootstrap",
             "message": "Le serveur n'a pas pu démarrer correctement.",
-            "error": BOOT_ERROR,
-            "traceback": BOOT_TRACEBACK.split('\n'),
+            "error": "{safe_boot_msg}",
             "hint": "Vérifiez les dépendances dans le Dockerfile ou les variables d'environnement."
-        }), 500
+        }}""", 500, {'Content-Type': 'application/json'}
 
     # Dummies pour éviter les NameError lors du chargement du reste du fichier
     def dummy_func(*args, **kwargs): return None
@@ -91,17 +92,18 @@ if BOOT_ERROR is None:
     @app.errorhandler(Exception)
     def handle_exception(e):
         """Retourne les erreurs système en JSON au lieu de HTML."""
+        msg = str(e)
+        logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
+        # On évite le bloc try/jsonify risqué et on utilise une structure simple
         try:
-            msg = str(e)
-            logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
             return jsonify({
                 "error": "Internal Server Error",
                 "message": msg,
-                "type": type(e).__name__,
                 "status": "error"
             }), 500
         except:
-            return '{"error": "Fatal Error", "message": "Failed to serialize error"}', 500
+            # Fallback manuel si jsonify échoue
+            return f'{{"error": "Internal Server Error", "message": "{msg}"}}', 500
 
     @app.route('/api/debug', methods=['GET'])
     def diagnostic_debug():
