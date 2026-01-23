@@ -472,8 +472,12 @@ def normalize_dataframe(df, column_types=None, column_mapping=None, split_dateti
     
     # 4. Ajouter hotel_id si présent
     if hotel_id:
-        # On l'ajoute au début pour la visibilité
-        df.insert(0, 'hotel_id', hotel_id)
+        # On ne l'ajoute que s'il n'existe pas déjà (Demande user)
+        if 'hotel_id' not in df.columns:
+            # On l'ajoute au début pour la visibilité
+            df.insert(0, 'hotel_id', hotel_id)
+        else:
+             logger.info("normalize_dataframe: hotel_id existe déjà, injection ignorée.")
     
     # Remplacer les valeurs NaN/None par None
     df = df.where(pd.notnull(df), None)

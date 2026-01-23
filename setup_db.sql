@@ -54,6 +54,7 @@ ALTER TABLE public.import_templates ENABLE ROW LEVEL SECURITY;
 -- Politique : Autoriser toutes les opérations pour le rôle service_role (Admin)
 -- Si vous utilisez l'application avec la clé service_role, elle aura accès à tout.
 DROP POLICY IF EXISTS "Allow all for service role" ON public.import_templates;
+CREATE POLICY "Allow all for service role" ON public.import_templates
     FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================================
