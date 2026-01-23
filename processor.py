@@ -57,7 +57,11 @@ class BaseProcessor:
             raise ValueError("DataFrame ou table cible non défini.")
         
         # Conversion du DataFrame en liste de dictionnaires (JSON compatible)
-        data = self.df.to_dict(orient='records')
+        # Replacing NaT/NaN with None for JSON compliance
+        df_clean = self.df.replace({pd.NaT: None})
+        df_clean = df_clean.where(pd.notnull(df_clean), None)
+        
+        data = df_clean.to_dict(orient='records')
         
         # Chunking pour éviter de dépasser les limites de Supabase
         chunk_size = 1000
