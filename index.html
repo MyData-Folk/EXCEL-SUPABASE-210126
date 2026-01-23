@@ -485,6 +485,16 @@
                         </li>
                     </ul>
                 </div>
+                <!-- Section Cache -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">Stockage</h3>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button class="btn btn-secondary btn-sm" style="width: 100%; justify-content: flex-start;"
+                            onclick="window.openCacheManager()">
+                            <span>📂 Gérer le cache</span>
+                        </button>
+                    </div>
+                </div>
                 <!-- Section Aide -->
                 <div class="sidebar-section">
                     <h3 class="sidebar-title">Besoin d'aide ?</h3>
@@ -557,6 +567,9 @@
                                         onclick="window.loadPreview(window.state.uploadedFile.filepath, document.getElementById('sheetSelect').value)">
                                         <span>🔄 Rafraîchir</span>
                                     </button>
+                                    <button class="btn btn-outline-primary btn-sm" onclick="insertCustomHeader()">
+                                        <span>➕ Insérer En-têtes</span>
+                                    </button>
                                     <span class="badge" id="rowCountBadge"></span>
                                 </div>
                             </div>
@@ -597,11 +610,19 @@
                                 <input type="text" class="form-input" id="newTableName"
                                     placeholder="ex: import_stocks_2026">
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Hotel ID (ajouté à chaque ligne)</label>
-                                <input type="text" class="form-input" id="hotelIdInput" value="Primary"
-                                    placeholder="ex: Primary">
-                            </div>
+                        </div>
+
+                        <!-- Zone Hotel ID partagée -->
+                        <div class="form-group"
+                            style="padding: 16px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border-color);">
+                            <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
+                                <span>🏨 Hotel ID</span>
+                                <span
+                                    style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">(Sera
+                                    ajouté à chaque ligne importée)</span>
+                            </label>
+                            <input type="text" class="form-input" id="hotelIdInput" value="Primary"
+                                placeholder="ex: Paris-01, Lyon-Sud...">
                         </div>
                         <div class="btn-group">
                             <button class="btn btn-secondary" onclick="goToStep(1)">Precedent</button>
@@ -703,9 +724,47 @@
                                 Heure' en deux colonnes distinctes.</li>
                         </ul>
 
-                        <h3 style="margin-top: 24px;">4. Import</h3>
-                        <p>Vérifiez le résumé, sauvegardez un <strong>Template</strong> si vous importez souvent le même
-                            format, puis lancez l'import.</p>
+                        <h3 style="margin-top: 24px;">4. Import et Cache</h3>
+                        <p>Vérifiez le résumé, sauvegardez un <strong>Template</strong> si nécessaire. <br>
+                            <strong>Cache :</strong> Utilisez le bouton "Gérer le cache" dans la barre latérale pour
+                            voir les fichiers temporaires stockés sur le serveur et libérer de l'espace si besoin.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Modal Gestion du Cache -->
+                <div id="cacheModal" class="modal"
+                    style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); overflow-y: auto;">
+                    <div class="modal-content"
+                        style="background: var(--bg-card); margin: 5% auto; padding: 32px; border-radius: 12px; width: 80%; max-width: 800px; border: 1px solid var(--border-color); position: relative;">
+                        <button class="btn btn-secondary btn-sm" style="position: absolute; right: 20px; top: 20px;"
+                            onclick="window.closeCacheManager()">Fermer</button>
+                        <h2 style="color: var(--supabase-green); margin-bottom: 24px;">📂 Gestion du Cache</h2>
+                        <p style="margin-bottom: 16px; color: var(--text-secondary);">Fichiers temporaires actuellement
+                            stockés sur le serveur.</p>
+
+                        <div class="preview-container"
+                            style="max-height: 400px; overflow-y: auto; margin-bottom: 24px;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fichier</th>
+                                        <th>Date d'upload</th>
+                                        <th>Taille</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cacheListContainer">
+                                    <!-- Liste générée par JS -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <button class="btn btn-secondary" onclick="window.closeCacheManager()">Annuler</button>
+                            <button class="btn btn-danger" style="background: #EF4444; color: white;"
+                                onclick="window.clearAllCache()">🗑️ Tout vider</button>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -875,8 +934,11 @@
                 document.getElementById('rowCountBadge').textContent = badgeText;
                 var thead = document.getElementById('previewTableHead');
                 var tbody = document.getElementById('previewTableBody');
+
                 if (thead && tbody) {
-                    thead.innerHTML = '<tr><th>Actions</th>' + data.headers.map(function (h) {
+                    var headersToDisplay = state.customHeaders || data.headers;
+
+                    thead.innerHTML = '<tr><th>Actions</th>' + headersToDisplay.map(function (h, i) {
                         var isIgnored = state.ignoredColumns.includes(h);
                         var style = isIgnored ? 'text-decoration: line-through; opacity: 0.5;' : '';
                         var icon = isIgnored ? '➕' : '🗑️'; // Plus to restore, Trash to delete
@@ -888,24 +950,71 @@
                             '</th>';
                     }).join('') + '</tr>';
 
-                    tbody.innerHTML = data.preview.map(function (row, idx) {
-                        var isIgnoredRow = state.ignoredRows.includes(idx);
-                        var isHeader = state.headerRowIndex === idx;
-                        var rowStyle = isIgnoredRow ? 'opacity: 0.5; text-decoration: line-through; background: rgba(0,0,0,0.05);' : '';
-                        if (isHeader) rowStyle = 'background: rgba(var(--supabase-green-rgb), 0.1); font-weight: bold;';
-
-                        return '<tr style="' + rowStyle + '">' +
-                            '<td style="white-space: nowrap;">' +
-                            '<button class="btn btn-secondary btn-sm" style="padding: 2px 8px; margin-right: 4px;" onclick="toggleIgnoreRow(' + idx + ')">' + (isIgnoredRow ? 'Restaurer' : 'Ignorer') + '</button>' +
-                            '<button class="btn btn-primary btn-sm" style="padding: 2px 8px;" onclick="useAsHeader(' + idx + ')">En-têtes</button>' +
-                            '</td>' +
-                            data.headers.map(function (h) {
-                                var isIgnoredCol = state.ignoredColumns.includes(h);
-                                var cellStyle = isIgnoredCol ? 'opacity: 0.3; background: #f0f0f0;' : '';
-                                return '<td style="' + cellStyle + '">' + (row[h] || '') + '</td>';
-                            }).join('') + '</tr>';
-                    }).join('');
+                    if (state.isInsertingHeader) {
+                        var inputRow = '<tr style="background: #e3f2fd; border-bottom: 2px solid #2196f3;">' +
+                            '<td><button class="btn btn-sm btn-primary" onclick="confirmCustomHeader()">Valider</button> <button class="btn btn-sm btn-secondary" onclick="cancelCustomHeader()">Annuler</button></td>' +
+                            headersToDisplay.map(function (h, i) {
+                                return '<td><input type="text" class="form-input custom-header-input" data-index="' + i + '" value="' + h + '" style="min-width: 80px;"></td>';
+                            }).join('') +
+                            '</tr>';
+                        tbody.innerHTML = inputRow + data.preview.map(renderRow).join('');
+                    } else {
+                        tbody.innerHTML = data.preview.map(renderRow).join('');
+                    }
                 }
+            }
+
+            function renderRow(row, idx) {
+                // Si on a des customHeaders, les clés de 'row' ne correspondent plus forcément aux headers affichés
+                // row est toujours indexé par les headers ORIGINAUX du fichier (ou 0, 1, 2...)
+                // C'est un peu délicat. Pour l'affichage, on itère sur les keys de row ou les headers originaux ?
+                // Le plus simple: on utilise data.headers (les originaux) pour lire la row.
+                var originalHeaders = state.previewData.headers;
+
+                var isIgnoredRow = state.ignoredRows.includes(idx);
+                var isHeader = state.headerRowIndex === idx;
+                var rowStyle = isIgnoredRow ? 'opacity: 0.5; text-decoration: line-through; background: rgba(0,0,0,0.05);' : '';
+                if (isHeader) rowStyle = 'background: rgba(var(--supabase-green-rgb), 0.1); font-weight: bold;';
+
+                return '<tr style="' + rowStyle + '">' +
+                    '<td style="white-space: nowrap;">' +
+                    '<button class="btn btn-secondary btn-sm" style="padding: 2px 8px; margin-right: 4px;" onclick="toggleIgnoreRow(' + idx + ')">' + (isIgnoredRow ? 'Restaurer' : 'Ignorer') + '</button>' +
+                    '<button class="btn btn-primary btn-sm" style="padding: 2px 8px;" onclick="useAsHeader(' + idx + ')">En-têtes</button>' +
+                    '</td>' +
+                    originalHeaders.map(function (h) {
+                        var isIgnoredCol = state.ignoredColumns.includes(h);
+                        var cellStyle = isIgnoredCol ? 'opacity: 0.3; background: #f0f0f0;' : '';
+                        return '<td style="' + cellStyle + '">' + (row[h] || '') + '</td>';
+                    }).join('') + '</tr>';
+            }
+
+            window.insertCustomHeader = function () {
+                state.isInsertingHeader = true;
+                // Init custom headers with existing if not set
+                if (!state.customHeaders) {
+                    state.customHeaders = [...state.previewData.headers];
+                }
+                displayPreview(state.previewData);
+            }
+
+            window.cancelCustomHeader = function () {
+                state.isInsertingHeader = false;
+                state.customHeaders = null;
+                displayPreview(state.previewData);
+            }
+
+            window.confirmCustomHeader = function () {
+                var inputs = document.querySelectorAll('.custom-header-input');
+                var newHeaders = [];
+                inputs.forEach(function (input) {
+                    newHeaders.push(input.value);
+                });
+                state.customHeaders = newHeaders;
+                state.sourceHeaders = newHeaders; // Update source headers for mapping
+                state.headerRowIndex = -1; // Special flag for custom header
+                state.isInsertingHeader = false;
+                state.ignoredRows = [];
+                displayPreview(state.previewData);
             }
 
             window.toggleIgnoreColumn = function (colName) {
@@ -1145,13 +1254,11 @@
                         if (!v) return false;
                         var s = String(v).trim();
 
-                        // 1. Excel Serial Number (ex: 45000 pour 2023...)
+                        // 1. Excel Serial Number (uniquement si le nom de colonne contient "date")
                         var asNum = parseFloat(v);
-                        if (!isNaN(asNum) && isFinite(asNum) && asNum > 10000 && asNum < 70000) {
-                            // C'est potentiellement une date Excel
-                            // Mais si la colonne est 'ID' ou 'Montant', ça peut être faux.
-                            // Dans le doute pour l'instant on ignore ce cas pour eviter les faux positifs sur les montants
-                            // return true; 
+                        var isDateCol = /date|time|heure|cree|maj/i.test(h);
+                        if (!isNaN(asNum) && isFinite(asNum) && asNum > 10000 && asNum < 70000 && isDateCol) {
+                            return true;
                         }
 
                         // 2. Regex strictes
@@ -1161,10 +1268,12 @@
                         if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)) return true;
                         // DD-MM-YYYY
                         if (/^\d{1,2}-\d{1,2}-\d{4}/.test(s)) return true;
+                        // DD.MM.YYYY
+                        if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(s)) return true;
                         // Heure seule HH:MM:SS
                         if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(s)) return true;
 
-                        // 3. Date.parse (plus permissif)
+                        // 3. Date.parse (moteur JS, sensible à la locale mais utile en dernier recours)
                         var d = Date.parse(s);
                         return !isNaN(d);
                     });
@@ -1225,14 +1334,17 @@
                     filename: state.uploadedFile.filepath,
                     sheet_name: document.getElementById('sheetSelect') ? document.getElementById('sheetSelect').value : null,
                     table_name: targetTable,
-                    hotel_id: state.importMode === 'create' ? hotelId : null,
+                    hotel_id: hotelId, // Toujours envoyer hotelId si présent
                     column_mapping: state.mapping,
                     column_types: state.columnTypes,
                     split_datetime: splitDatetime,
                     split_datetime: splitDatetime,
                     ignored_rows: state.ignoredRows,
                     ignored_columns: state.ignoredColumns,
-                    header_row: state.headerRowIndex
+                    ignored_rows: state.ignoredRows,
+                    ignored_columns: state.ignoredColumns,
+                    header_row: state.headerRowIndex,
+                    custom_headers: state.headerRowIndex === -1 ? state.customHeaders : null
                 };
 
                 var btn = document.getElementById('importBtn');
@@ -1420,6 +1532,72 @@
                 if (modal) {
                     modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
                 }
+            }
+
+            window.openCacheManager = function () {
+                var modal = document.getElementById('cacheModal');
+                if (modal) {
+                    modal.style.display = 'block';
+                    loadCacheList();
+                }
+            }
+
+            window.closeCacheManager = function () {
+                var modal = document.getElementById('cacheModal');
+                if (modal) modal.style.display = 'none';
+            }
+
+            function loadCacheList() {
+                var container = document.getElementById('cacheListContainer');
+                container.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px;">Chargement...</td></tr>';
+
+                fetch(API_BASE + '/cache')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.files && data.files.length > 0) {
+                            container.innerHTML = data.files.map(f => {
+                                var date = new Date(f.created_at).toLocaleString('fr-FR');
+                                var size = (f.size / 1024).toFixed(1) + ' KB';
+                                return `<tr>
+                                    <td>${f.filename}</td>
+                                    <td>${date}</td>
+                                    <td>${size}</td>
+                                    <td><button class="btn btn-secondary btn-sm" onclick="window.deleteCacheFile('${f.filename}')">🗑️</button></td>
+                                </tr>`;
+                            }).join('');
+                        } else {
+                            container.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px;">Le cache est vide</td></tr>';
+                        }
+                    })
+                    .catch(err => {
+                        container.innerHTML = '<tr><td colspan="4" style="text-align:center; color: #EF4444;">Erreur: ' + err.message + '</td></tr>';
+                    });
+            }
+
+            window.deleteCacheFile = function (filename) {
+                if (!confirm('Supprimer ce fichier du cache ?')) return;
+                fetch(API_BASE + '/cache/' + filename, { method: 'DELETE' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) loadCacheList();
+                        else alert('Erreur: ' + (data.error || 'Inconnue'));
+                    })
+                    .catch(err => alert('Erreur: ' + err.message));
+            }
+
+            window.clearAllCache = function () {
+                if (!confirm('Voulez-vous vraiment vider TOUT le cache ?')) return;
+                fetch(API_BASE + '/cache', { method: 'DELETE' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert(data.deleted_count + ' fichiers supprimés');
+                            loadCacheList();
+                        } else {
+                            alert('Erreur: ' + (data.error || 'Inconnue'));
+                        }
+                    })
+                    .catch(err => alert('Erreur: ' + err.message));
             }
 
             document.addEventListener('DOMContentLoaded', initializeApp);

@@ -261,7 +261,7 @@ def parse_date(value):
     Convertit différents formats de date vers le format SQL (YYYY-MM-DD).
     Gère: Excel serial dates, ISO dates, FR dates (JJ/MM/AAAA)
     """
-    if pd.isna(value):
+    if pd.isna(value) or value == '':
         return None
     
     if isinstance(value, datetime):
@@ -278,10 +278,18 @@ def parse_date(value):
     
     value_str = str(value).strip()
     
-    if not value_str:
+    if not value_str or value_str.lower() in ['nan', 'none', 'nat']:
         return None
     
-    # Liste des formats à essayer
+    # 1. Tentative avec pandas (très robuste pour les formats standards)
+    try:
+        dt = pd.to_datetime(value_str, dayfirst=True, errors='coerce')
+        if not pd.isna(dt):
+            return dt.strftime('%Y-%m-%d')
+    except:
+        pass
+
+    # 2. Liste de formats spécifiques si pandas échoue
     date_formats = [
         '%Y-%m-%d',      # ISO: 2026-01-21
         '%d/%m/%Y',      # FR: 21/01/2026
@@ -736,6 +744,71 @@ def process_file():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/cache', methods=['GET'])
+def list_cache():
+    """Liste les fichiers présents dans le dossier d'upload."""
+    ensure_upload_folder()
+    folder = app.config['UPLOAD_FOLDER']
+    files = []
+    
+    try:
+        for filename in sorted(os.listdir(folder)):
+            path = os.path.join(folder, filename)
+            if os.path.isfile(path) and not filename.startswith('.'):
+                stats = os.stat(path)
+                files.append({
+                    'filename': filename,
+                    'size': stats.st_size,
+                    'created_at': datetime.fromtimestamp(stats.st_ctime).isoformat()
+                })
+        return jsonify({'files': sorted(files, key=lambda x: x['created_at'], reverse=True)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/cache', methods=['DELETE'])
+def clear_cache():
+    """Supprime tous les fichiers du cache."""
+    ensure_upload_folder()
+    folder = app.config['UPLOAD_FOLDER']
+    deleted_count = 0
+    errors = []
+    
+    try:
+        for filename in os.listdir(folder):
+            path = os.path.join(folder, filename)
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+                    deleted_count += 1
+            except Exception as e:
+                errors.append(f"{filename}: {str(e)}")
+        
+        return jsonify({
+            'success': True,
+            'deleted_count': deleted_count,
+            'errors': errors if errors else None
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/cache/<filename>', methods=['DELETE'])
+def delete_cache_file(filename):
+    """Supprime un fichier spécifique du cache."""
+    # Sécurité: empêcher de sortir du dossier d'upload
+    if '..' in filename or filename.startswith('/'):
+        return jsonify({'error': 'Nom de fichier invalide'}), 400
+        
+    path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+            return jsonify({'success': True, 'filename': filename})
+        else:
+            return jsonify({'error': 'Fichier non trouvé'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 # ============================================================================
 # ROUTES API - SUPABASE
@@ -807,7 +880,9 @@ def import_append():
     column_types = data.get('column_types', {})
     column_mapping = data.get('column_mapping', {})
     split_datetime = data.get('split_datetime', False)
-    header_row = data.get('header_row') # Nouveau
+    header_row = data.get('header_row')
+    hotel_id = data.get('hotel_id') # Nouveau: support hotel_id en append
+    custom_headers = data.get('custom_headers') # Nouveau: support custom_headers en append
     
     if not all([filename, table_name]):
         return jsonify({'error': 'Paramètres requis: filename, table_name'}), 400
@@ -852,11 +927,17 @@ def import_append():
              except Exception as ce:
                 logger.warning(f"Erreur lors du filtrage des colonnes: {str(ce)}")
         
+        # 0. Appliquer les en-têtes personnalisés
+        if custom_headers and len(custom_headers) == len(df.columns):
+            df.columns = custom_headers
+        elif custom_headers:
+            logger.warning(f"Append: Mismatch custom_headers ({len(custom_headers)}) vs df columns ({len(df.columns)})")
+
         # Toujours convertir les colonnes en string
         df.columns = [str(c).strip() for c in df.columns]
         
         # Normaliser (types, mapping, split)
-        df_normalized = normalize_dataframe(df, column_types, column_mapping, split_datetime)
+        df_normalized = normalize_dataframe(df, column_types, column_mapping, split_datetime, hotel_id)
         
         # Convertir en records
         records = dataframe_to_json_records(df_normalized)
@@ -906,7 +987,9 @@ def import_create():
     split_datetime = data.get('split_datetime', False)
     ignored_rows = data.get('ignored_rows', [])
     hotel_id = data.get('hotel_id') # Nouveau
+    hotel_id = data.get('hotel_id') # Nouveau
     header_row = data.get('header_row') # Nouveau
+    # custom_headers récupéré plus bas
     
     if not all([filename, table_name]):
         return jsonify({'error': 'Paramètres requis: filename, table_name'}), 400
@@ -933,6 +1016,13 @@ def import_create():
                 read_params['header'] = int(header_row)
             
             df = read_csv_robust(file_path, **read_params)
+
+        # 0. Appliquer les en-têtes personnalisés (si 'Insérer En-tête' utilisé)
+        custom_headers = data.get('custom_headers')
+        if custom_headers and len(custom_headers) == len(df.columns):
+            df.columns = custom_headers
+        elif custom_headers:
+            logger.warning(f"Mismatch custom_headers ({len(custom_headers)}) vs df columns ({len(df.columns)})")
 
         # Filtrer les lignes ignorées
         if ignored_rows:
