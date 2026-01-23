@@ -124,6 +124,19 @@ BEGIN
             RAISE NOTICE 'Erreur lors de l''ajout de hotel_id pour %: %', t, SQLERRM;
         END;
         
+        -- Ajouter les colonnes spécifiques manquantes pour D-EDGE PLANNING
+        IF t = 'D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES' THEN
+            BEGIN
+                EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "LEFT FOR SALE" TEXT';
+                EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "TYPE DE CHAMBRE" TEXT';
+                EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "PLAN TARIFAIRE" TEXT';
+                EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "TARIF / DISPO" TEXT';
+                 EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "date" DATE';
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'Erreur colonnes D-EDGE: %', SQLERRM;
+            END;
+        END IF;
+        
         -- Ajouter la policy RLS pour chaque table report
         BEGIN
             EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
