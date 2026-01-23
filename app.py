@@ -30,6 +30,9 @@ from utils import snake_case
 
 from processor import ProcessorFactory
 
+import math
+import numpy as np
+
 # Configuration des logs
 logging.basicConfig(
     level=logging.INFO,
@@ -45,18 +48,30 @@ logger = logging.getLogger(__name__)
 # Chargement des variables d'environnement
 load_dotenv()
 
+# Configurer Flask pour gérer NaN/Inf de manière sécurisée (transforme en null)
+from flask.json.provider import DefaultJSONProvider
+
+class CustomJSONProvider(DefaultJSONProvider):
+    def dumps(self, obj, **kwargs):
+        # Forcer ignore_nan pour éviter les crashs sur float('nan')
+        kwargs.setdefault('ignore_nan', True)
+        return super().dumps(obj, **kwargs)
+
 # Configuration Flask
 app = Flask(__name__)
+app.json_provider_class = CustomJSONProvider
+app.json = CustomJSONProvider(app)
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 52428800))
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
 
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Retourne les erreurs système en JSON au lieu de HTML."""
-    logger.error(f"ERREUR GLOBAL: {str(e)}", exc_info=True)
+    msg = str(e)
+    logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
     return jsonify({
         "error": "Internal Server Error",
-        "message": str(e),
+        "message": msg,
         "type": type(e).__name__
     }), 500
 
@@ -493,9 +508,9 @@ def dataframe_to_json_records(df):
                     clean_record[k] = value.strftime('%Y-%m-%d')
                 elif isinstance(value, pd.Timedelta):
                     clean_record[k] = str(value)
-                elif isinstance(value, (int, float)):
-                    # Nettoyage Inf et NaN pour les nombres
-                    if value != value or value == float('inf') or value == float('-inf') or pd.isna(value):
+                elif isinstance(value, (int, float, np.number)):
+                    # Nettoyage Inf et NaN pour les nombres (y compris numpy)
+                    if not math.isfinite(value) or pd.isna(value):
                         clean_record[k] = None
                     else:
                         clean_record[k] = value
@@ -507,21 +522,29 @@ def dataframe_to_json_records(df):
                 else:
                     # Tout le reste en string
                     val_str = str(value)
-                    if val_str.lower() in ['nan', 'nat', 'none', 'inf', '-inf']:
+                    if val_str.lower() in ['nan', 'nat', 'none', 'inf', '-inf'] or pd.isna(value):
                          clean_record[k] = None
                     else:
                          clean_record[k] = val_str
             
             # Vérification finale de sérialisation JSON pour cet enregistrement
             try:
-                # json.dumps a été déplacé en haut
+                # Flask ignore_nan=True gérera la réponse finale, 
+                # mais ici on vérifie si l'objet est sérialisable de base.
                 json.dumps(clean_record)
+            except (TypeError, ValueError):
+                # Si NaN est présent, json.dumps standard lève ValueError.
+                # On tente avec allow_nan=True si c'est juste un problème de float, 
+                # sinon fallback total string.
+                try:
+                    json.dumps(clean_record, allow_nan=True)
+                    clean_records.append(clean_record)
+                except:
+                    logger.warning(f"Serialization fallback total pour une ligne")
+                    safe_record = {str(k): str(v) if v is not None else None for k, v in clean_record.items()}
+                    clean_records.append(safe_record)
+            else:
                 clean_records.append(clean_record)
-            except (TypeError, ValueError) as je:
-                logger.warning(f"Serialization fallback pour un record: {str(je)}")
-                # Si un enregistrement échoue encore, on force tout en string
-                safe_record = {str(k): str(v) if v is not None else None for k, v in clean_record.items()}
-                clean_records.append(safe_record)
                 
         except Exception as e:
             logger.warning(f"Erreur lors du nettoyage d'une ligne: {str(e)}")
