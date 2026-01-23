@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import datetime
 from supabase import create_client, Client
+from utils import snake_case
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +162,16 @@ class OtaInsightProcessor(BaseProcessor):
         self.read_excel(sheet_name=self.tab_name)
         
         # Nettoyage basique des noms de colonnes (Unnamed -> empty)
-        self.df.columns = [col if not str(col).startswith('Unnamed') else f"col_{i}" for i, col in enumerate(self.df.columns)]
+        # self.df.columns = [col if not str(col).startswith('Unnamed') else f"col_{i}" for i, col in enumerate(self.df.columns)]
+        
+        # Nettoyage AVANCE: Snake Case pour matcher le schéma SQL
+        new_cols = []
+        for i, col in enumerate(self.df.columns):
+            if str(col).startswith('Unnamed'):
+                new_cols.append(f"col_{i}")
+            else:
+                new_cols.append(snake_case(str(col)))
+        self.df.columns = new_cols
         
         self.inject_hotel_id()
         # Normalisation des dates si présentes
@@ -182,6 +192,8 @@ class SalonsEventsProcessor(BaseProcessor):
                         self.df[col] = self.df[col].dt.strftime('%Y-%m-%d')
                 except:
                     pass
+
+
 
 class ProcessorFactory:
     @staticmethod

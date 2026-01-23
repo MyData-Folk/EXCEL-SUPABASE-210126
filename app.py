@@ -22,6 +22,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from utils import snake_case
 
 from processor import ProcessorFactory
 
@@ -47,11 +48,22 @@ class CustomJSONProvider(DefaultJSONProvider):
         kwargs.setdefault('ignore_nan', True) 
         return super().dumps(obj, **kwargs)
 
+# Configuration Flask
 app = Flask(__name__)
 app.json_provider_class = CustomJSONProvider
 app.json = CustomJSONProvider(app)
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 52428800))
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Retourne les erreurs système en JSON au lieu de HTML."""
+    logger.error(f"ERREUR GLOBAL: {str(e)}", exc_info=True)
+    return jsonify({
+        "error": "Internal Server Error",
+        "message": str(e),
+        "type": type(e).__name__
+    }), 500
 
 # Configuration CORS
 CORS(app, resources={
@@ -186,42 +198,7 @@ def ensure_upload_folder():
         logger.error(f"Erreur lors de la création du dossier {folder} : {str(e)}")
 
 
-def snake_case(text):
-    """
-    Convertit un texte en snake_case.
-    Ex: "Date d'achat" -> "date_d_achat"
-    Gère aussi les objets date pour éviter le format _000000
-    Limite à 63 caractères pour PostgreSQL.
-    """
-    if not text:
-        return text
-    
-    # Si c'est déjà une date ou un timestamp, formatage propre
-    if isinstance(text, (datetime, pd.Timestamp)):
-        return text.strftime('%Y_%m_%d')
-    
-    text = str(text)
-    
-    # Détection heuristique de chaîne de date (ex: "2026-01-16 00:00:00")
-    if ' ' in text and (':' in text or '-' in text):
-        try:
-            # Essayer de voir si c'est une date qui a été stringifiée par pandas
-            d = pd.to_datetime(text)
-            return d.strftime('%Y_%m_%d')
-        except:
-            pass
 
-    # Supprimer les caractères spéciaux et accents
-    import unicodedata
-    text = unicodedata.normalize('NFD', text)
-    text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
-    
-    # Remplacer les espaces et caractères spéciaux par des underscores
-    text = re.sub(r'[\s\-]+', '_', text)
-    text = re.sub(r'[^a-zA-Z0-9_]', '', text)
-    
-    # Lowercase et Troncature à 63 caractères (Limite Postgres)
-    return text.lower()[:63].strip('_')
 
 
 def clean_number(value):
