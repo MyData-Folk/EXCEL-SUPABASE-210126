@@ -55,13 +55,13 @@ except Exception as e:
     BOOT_TRACEBACK = traceback.format_exc()
     sys.stderr.write(f"CRITICAL BOOT ERROR: {BOOT_ERROR}\n{BOOT_TRACEBACK}\n")
     
-    from flask import Flask, jsonify
+    from flask import Flask, jsonify as flask_jsonify
     app = Flask(__name__)
     
     @app.route('/', defaults={'path': ''})
     @app.route('/<path:path>')
     def survival_mode(path):
-        return jsonify({
+        return flask_jsonify({
             "status": "error",
             "stage": "bootstrap",
             "message": "Le serveur n'a pas pu démarrer correctement.",
@@ -69,6 +69,21 @@ except Exception as e:
             "traceback": BOOT_TRACEBACK.split('\n'),
             "hint": "Vérifiez les dépendances dans le Dockerfile ou les variables d'environnement."
         }), 500
+
+    # Dummies pour éviter les NameError lors du chargement du reste du fichier
+    def dummy_func(*args, **kwargs): return None
+    def dummy_decorator(*args, **kwargs): return lambda f: f
+    send_file = jsonify = dummy_func
+    wraps = dummy_decorator
+    CORS = dummy_func
+    pd = type('pd', (), {'isna': dummy_func, 'read_excel': dummy_func, 'read_csv': dummy_func, 'DataFrame': type('DF', (), {}), 'Timestamp': type('TS', (), {}), 'Timedelta': type('TD', (), {})})
+    snake_case = lambda x: str(x)
+    ProcessorFactory = type('PF', (), {'get_processor': dummy_func})
+    Client = object
+    ALLOWED_EXTENSIONS = set()
+    MAX_PREVIEW_ROWS = 0
+    # On définit aussi les objets importés de flask qui pourraient manquer
+    request = type('req', (), {'get_json': dummy_func, 'files': {}})
 
 if BOOT_ERROR is None:
     # --- LOGIQUE NORMALE DE L'APPLICATION ---
