@@ -66,44 +66,74 @@ class BaseProcessor:
 class DedgePlanningProcessor(BaseProcessor):
     def apply_transformations(self):
         self.target_table = "D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES"
-        # Lecture sans header pour analyser manuellement
         self.read_excel(header=None)
         
-        # --- DETECTION INTELLIGENTE DE LA LIGNE DE DATE ---
-        # On cherche une ligne où les colonnes (index 2+) contiennent des dates valides (vers 2026)
-        date_row_idx = 2
-        for r_idx in [1, 2, 3, 0]:
-            if r_idx >= len(self.df): continue
-            test_val = self.df.iloc[r_idx, 2] # Colonne C
-            if pd.notna(test_val):
-                # Si c'est un nombre Excel pour 2026, il doit être > 45000
-                if isinstance(test_val, (int, float)) and test_val > 40000:
-                    date_row_idx = r_idx
-                    break
-                # Si c'est un objet date
-                if isinstance(test_val, (datetime, pd.Timestamp)):
-                    date_row_idx = r_idx
-                    break
+        # --- DETECTION ULTRA-ROBUSTE DE LA LIGNE DE DATE ---
+        date_row_idx = None
         
-        logger.info(f"Detección ligne de date à l'index: {date_row_idx}")
+        # Essayer plusieurs lignes candidates
+        for r_idx in range(min(6, len(self.df))):
+            try:
+                test_val = self.df.iloc[r_idx, 2]  # Colonne C
+                if pd.isna(test_val):
+                    continue
+                
+                # Tester si c'est une date valide
+                parsed_date = None
+                if isinstance(test_val, (int, float)):
+                    # Excel serial date
+                    if test_val > 40000:  # Approximativement après 2009
+                        parsed_date = pd.to_datetime(test_val, unit='D', origin='1899-12-30')
+                elif isinstance(test_val, (datetime, pd.Timestamp)):
+                    parsed_date = test_val
+                else:
+                    # Essayer de parser comme string
+                    parsed_date = pd.to_datetime(test_val, dayfirst=True, errors='coerce')
+                
+                # Valider que la date est dans une plage raisonnable (2024-2027)
+                if parsed_date and not pd.isna(parsed_date):
+                    year = parsed_date.year
+                    if 2024 <= year <= 2027:
+                        date_row_idx = r_idx
+                        logger.info(f"✓ Date row trouvée à l'index {r_idx}, date test: {parsed_date.strftime('%Y-%m-%d')}")
+                        break
+                    else:
+                        logger.warning(f"✗ Row {r_idx} a une date hors plage: {year}")
+            except Exception as e:
+                logger.debug(f"Row {r_idx} test failed: {e}")
+                continue
+        
+        # Fallback si aucune ligne valide trouvée
+        if date_row_idx is None:
+            logger.warning("ATTENTION: Aucune ligne de date valide détectée, utilisation de row 2 par défaut")
+            date_row_idx = 2
+        
         date_row = self.df.iloc[date_row_idx]
         dates = []
-        for val in date_row[2:]:
+        
+        for col_idx, val in enumerate(date_row[2:], start=2):
             try:
                 if pd.isna(val):
                     dates.append(None)
                     continue
                 
+                parsed_date = None
                 if isinstance(val, (int, float)):
-                    # Excel serial dates
-                    d = pd.to_datetime(val, unit='D', origin='1899-12-30')
+                    parsed_date = pd.to_datetime(val, unit='D', origin='1899-12-30')
+                elif isinstance(val, (datetime, pd.Timestamp)):
+                    parsed_date = val
                 else:
-                    d = pd.to_datetime(val, dayfirst=True, errors='coerce')
+                    parsed_date = pd.to_datetime(val, dayfirst=True, errors='coerce')
                 
-                if pd.isna(d):
-                    dates.append(None)
+                # Validation finale
+                if parsed_date and not pd.isna(parsed_date):
+                    if 2024 <= parsed_date.year <= 2027:
+                        dates.append(parsed_date.strftime('%Y-%m-%d'))
+                    else:
+                        logger.warning(f"Date col {col_idx} ignorée (année {parsed_date.year})")
+                        dates.append(None)
                 else:
-                    dates.append(d.strftime('%Y-%m-%d'))
+                    dates.append(None)
             except:
                 dates.append(None)
         
@@ -138,6 +168,7 @@ class DedgePlanningProcessor(BaseProcessor):
                 })
         
         self.df = pd.DataFrame(records)
+        logger.info(f"Planning: {len(records)} enregistrements générés")
 
 class DedgeReservationProcessor(BaseProcessor):
     def apply_transformations(self):
