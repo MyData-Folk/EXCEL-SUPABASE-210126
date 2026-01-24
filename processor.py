@@ -231,15 +231,21 @@ class OtaInsightProcessor(BaseProcessor):
         
         # Nettoyage des noms de colonnes
         new_cols = []
+        cols_to_drop = []
         for i, col in enumerate(self.df.columns):
             original_name = str(col)
             if original_name.startswith('Unnamed'):
-                new_cols.append(f"col_{i}")
+                # Marquer pour suppression au lieu de renommer
+                cols_to_drop.append(i)
             else:
                 # Normalisation snake_case
                 clean_name = snake_case(original_name)
-                # On utilise maintenant le nom propre 'hotel' car setup_db.sql a été mis à jour
                 new_cols.append(clean_name)
+        
+        # Supprimer les colonnes sans nom
+        if cols_to_drop:
+            self.df = self.df.drop(self.df.columns[cols_to_drop], axis=1)
+            logger.info(f"OTA: {len(cols_to_drop)} colonnes vides supprimées")
         
         self.df.columns = new_cols
         
