@@ -603,9 +603,10 @@
                         <div class="card-header">
                             <h2 class="card-title">1. Configuration & Source</h2>
                         </div>
-                        
+
                         <!-- Zone de selection Hotel/Modele (Déplacée ici pour visibilité immédiate) -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border-color);">
+                        <div
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border-color);">
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label class="form-label">🏨 Sélectionner l'Hôtel</label>
                                 <select class="form-select" id="hotelIdInput">
@@ -614,7 +615,8 @@
                             </div>
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label class="form-label">📄 Charger un Modèle (Optionnel)</label>
-                                <select class="form-select" id="manualTemplateSelect" onchange="if(this.value) applyTemplate(this.value)">
+                                <select class="form-select" id="manualTemplateSelect"
+                                    onchange="if(this.value) applyTemplate(this.value)">
                                     <option value="">Sélectionner un modèle...</option>
                                 </select>
                             </div>
@@ -927,11 +929,7 @@
                 var fileInput = document.getElementById('fileInput');
                 if (dropzone && fileInput) {
                     dropzone.onclick = function (e) {
-                        if (e.target !== fileInput) {
-                            fileInput.click();
-                            e.preventDefault();
-                            e.stopPropagation();
-                        }
+                        fileInput.click();
                     };
                     dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('dragover'); });
                     dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('dragover'); });
@@ -1448,7 +1446,8 @@
                 var targetTable = state.importMode === 'append' ? document.getElementById('existingTableSelect').value : document.getElementById('newTableName').value;
                 var endpoint = state.importMode === 'append' ? 'append' : 'create';
                 var splitDatetime = document.getElementById('splitDatetimeCheckbox').checked;
-                var hotelId = document.getElementById('hotelIdInput') ? document.getElementById('hotelIdInput').value : 'Primary';
+                var hotelId = document.getElementById('hotelIdInput') ? document.getElementById('hotelIdInput').value : '';
+                if (!hotelId) hotelId = 'Default_Hotel';
 
                 var payload = {
                     filename: state.uploadedFile.filepath,
@@ -1794,10 +1793,8 @@
             }
 
             function handleAutoFile(file) {
-                var hotelId = document.getElementById('autoHotelId').value;
+                var hotelId = document.getElementById('autoHotelId').value || 'Default_Hotel';
                 var category = document.getElementById('autoCategory').value;
-
-                if (!hotelId) { alert('Veuillez sélectionner un hôtel d\'abord'); return; }
 
                 // Reset UI
                 var status = document.getElementById('autoStatus');
@@ -1825,7 +1822,8 @@
                                 logs.innerHTML += '> Catégorie détectée: ' + category + '\n';
                                 document.getElementById('autoCategory').value = category;
                             } else {
-                                throw new Error('Catégorie non détectée. Veuillez la sélectionner manuellement.');
+                                // En cas de non detection, on procede quand même si l'utilisateur veut (il pourra choisir plus tard ou c'est un echec)
+                                logs.innerHTML += '> Catégorie non détectée. Utilisation du mode manuel recommandé si besoin.\n';
                             }
                         }
 

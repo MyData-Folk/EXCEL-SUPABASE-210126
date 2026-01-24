@@ -17,6 +17,8 @@ def json_safe(obj):
         if math.isnan(obj) or math.isinf(obj):
             return None
         return obj
+    elif isinstance(obj, (datetime, pd.Timestamp)):
+        return obj.isoformat()
     elif pd.isna(obj): # Gère NaT et NaN de pandas
         return None
     return obj

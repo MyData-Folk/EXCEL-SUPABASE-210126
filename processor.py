@@ -161,27 +161,67 @@ class OtaInsightProcessor(BaseProcessor):
             "vs. 3 jours": "OTA VS 3 JOURS",
             "vs. 7 jours": "OTA VS 7 JOURS"
         }
-        self.target_table = tab_map.get(self.tab_name)
+        
+        # Mapping plus intelligent (Fuzzy match)
+        self.target_table = None
+        for key, table in tab_map.items():
+            if key.lower() in self.tab_name.lower() or self.tab_name.lower() in key.lower():
+                self.target_table = table
+                break
+        
         if not self.target_table:
-            # Fallback auto-détection si tab_name est flou
+            # Fallback direct par mots clés
             if "APER" in self.tab_name.upper(): self.target_table = "OTA APERÇU"
             elif "TARIF" in self.tab_name.upper(): self.target_table = "OTA TARIFS CONCURRENCE"
-            elif "HIER" in self.tab_name.upper(): self.target_table = "OTA VS HIER"
-            else: raise ValueError(f"Onglet non supporté: {self.tab_name}")
+            elif "HIER" in self.tab_name.upper() or "1 J" in self.tab_name.upper(): self.target_table = "OTA VS HIER"
+            elif "3 J" in self.tab_name.upper(): self.target_table = "OTA VS 3 JOURS"
+            elif "7 J" in self.tab_name.upper(): self.target_table = "OTA VS 7 JOURS"
+            else: raise ValueError(f"Onglet non supporté ou non reconnu: {self.tab_name}")
             
-        self.read_excel(sheet_name=self.tab_name)
+        # --- LECTURE AVEC RECHERCHE D'EN-TÊTE ---
+        # OTA Insight a souvent des lignes vides ou logos en haut
+        df_raw = pd.read_excel(self.file_path, sheet_name=self.tab_name, header=None, nrows=15)
         
+        header_row = 0
+        for i, row in df_raw.iterrows():
+            # Une ligne de header valide a souvent au moins 3 colonnes non-vides dans les 5 premières
+            non_empty = [v for v in row.iloc[:5] if pd.notna(v) and str(v).strip() != ""]
+            if len(non_empty) >= 2:
+                # Si on trouve un mot clé commun (Date, Jour, Competitor)
+                row_str = " ".join([str(v) for v in row]).upper()
+                if any(k in row_str for k in ["DATE", "JOUR", "DEMANDE", "COMPS"]):
+                    header_row = i
+                    break
+        
+        logger.info(f"OTA Insight: Header trouvé à la ligne {header_row}")
+        
+        # Re-lire avec le bon header
+        self.df = pd.read_excel(self.file_path, sheet_name=self.tab_name, header=header_row)
+        
+        # Nettoyage des noms de colonnes
         new_cols = []
         for i, col in enumerate(self.df.columns):
-            if str(col).startswith('Unnamed'):
+            original_name = str(col)
+            if original_name.startswith('Unnamed'):
                 new_cols.append(f"col_{i}")
             else:
-                new_cols.append(snake_case(str(col)))
+                # Normalisation snake_case
+                clean_name = snake_case(original_name)
+                # On utilise maintenant le nom propre 'hotel' car setup_db.sql a été mis à jour
+                new_cols.append(clean_name)
+        
         self.df.columns = new_cols
         
         self.inject_hotel_id()
-        date_cols = [col for col in self.df.columns if 'date' in str(col).lower()]
+        # Normalisation des dates si présentes (colonnes contenant date ou jour)
+        date_cols = [col for col in self.df.columns if 'date' in str(col).lower() or 'jour' in str(col).lower()]
         self.normalize_dates(date_cols)
+        
+        # Supprimer les lignes où 'date' est vide (souvent des lignes de résumé en bas)
+        if 'date' in self.df.columns:
+            self.df = self.df.dropna(subset=['date'])
+        elif 'date_date' in self.df.columns:
+             self.df = self.df.dropna(subset=['date_date'])
 
 class SalonsEventsProcessor(BaseProcessor):
     def apply_transformations(self):

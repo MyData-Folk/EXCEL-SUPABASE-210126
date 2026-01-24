@@ -80,9 +80,9 @@ CREATE TABLE IF NOT EXISTS public."OTA APERÇU" (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     hotel_id TEXT,
     jour TEXT, date DATE,
-    votre_htel_le_plus_bas TEXT, tarif_le_plus_bas_mdiane_du_compset TEXT,
+    votre_hotel_le_plus_bas TEXT, tarif_le_plus_bas_mediane_du_compset TEXT,
     classement_des_tarifs_du_compset TEXT, demande_du_march TEXT,
-    bookingcom_classement TEXT, jours_fris TEXT, vnements TEXT
+    bookingcom_classement TEXT, jours_feries TEXT, evenements TEXT
 );
 
 -- STRUCTURE COMMUNE POUR TARIFS ET VS
@@ -100,14 +100,14 @@ BEGIN
             date_date DATE,
             demande_du_march TEXT,
             folkestone_opra TEXT,
-            htel_madeleine_haussmann TEXT,
-            htel_de_larcade TEXT,
-            htel_cordelia_opra_madeleine TEXT,
+            hotel_madeleine_haussmann TEXT,
+            hotel_de_larcade TEXT,
+            hotel_cordelia_opra_madeleine TEXT,
             queen_mary_opera TEXT,
-            htel_du_triangle_dor TEXT,
+            hotel_du_triangle_dor TEXT,
             best_western_plus_hotel_sydney_opera TEXT,
             hotel_opra_opal TEXT,
-            htel_royal_opra TEXT,
+            hotel_royal_opra TEXT,
             hotel_george_sand_opra_paris TEXT,
             hotel_chavanel TEXT
         )', t);
