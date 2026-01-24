@@ -44,6 +44,22 @@ CORS(app, resources={
     }
 })
 
+@app.route('/api/diag-excel', methods=['GET'])
+def diag_excel():
+    """Endpoint temporaire pour inspecter la structure du fichier Planning."""
+    file_path = 'MODELE DE FICHIER EXCEL/RAPPORT PLANNING D-EDGE.xlsx'
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'Fichier non trouvé'}), 404
+    try:
+        df = pd.read_excel(file_path, header=None, nrows=20)
+        # Convertir en liste de listes simple
+        rows = []
+        for i, row in df.iterrows():
+            rows.append([str(v) if pd.notna(v) else None for v in row])
+        return jsonify({'rows': rows})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Retourne les erreurs système en JSON au lieu de HTML."""
