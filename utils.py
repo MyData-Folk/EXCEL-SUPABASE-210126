@@ -1,7 +1,25 @@
 import re
 import unicodedata
 import pandas as pd
+import math
 from datetime import datetime
+
+def json_safe(obj):
+    """
+    Rend un objet (dict, list, etc.) compatible JSON en remplaçant 
+    les NaN, Inf et NaT par None.
+    """
+    if isinstance(obj, dict):
+        return {k: json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [json_safe(v) for v in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif pd.isna(obj): # Gère NaT et NaN de pandas
+        return None
+    return obj
 
 def snake_case(text):
     """

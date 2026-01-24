@@ -20,7 +20,7 @@ from supabase import create_client, Client
 
 # S'assurer que le dossier courant est accessible
 sys.path.append(os.getcwd())
-from utils import snake_case
+from utils import snake_case, json_safe
 from processor import ProcessorFactory
 
 # Configuration des logs
@@ -50,11 +50,11 @@ def handle_exception(e):
     msg = str(e)
     logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
     try:
-        return jsonify({
+        return jsonify(json_safe({
             "error": "Internal Server Error",
             "message": msg,
             "status": "error"
-        }), 500
+        })), 500
     except:
         return f'{{"error": "Internal Server Error", "message": "{msg}"}}', 500
 
@@ -572,7 +572,7 @@ def health_check():
             status['supabase_error'] = err_msg
             status['status'] = 'degraded'
         
-    return jsonify(status)
+    return jsonify(json_safe(status))
 
 
 @app.route('/api/upload', methods=['POST'])
@@ -766,7 +766,8 @@ def list_cache():
                 })
         return jsonify({'files': sorted(files, key=lambda x: x['created_at'], reverse=True)})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify(json_safe({'files': files}))
+
 
 @app.route('/api/cache', methods=['DELETE'])
 def clear_cache():
@@ -1137,7 +1138,7 @@ def list_templates():
     
     except Exception as e:
         logger.error(f"ERREUR API /templates (GET): {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify(json_safe({'templates': results}))
 
 
 @app.route('/api/templates', methods=['POST'])
@@ -1289,7 +1290,7 @@ def get_hotels():
     try:
         supabase = get_supabase_client()
         result = supabase.table('hotels').select('*').order('hotel_name').execute()
-        return jsonify({'hotels': result.data})
+        return jsonify(json_safe({'hotels': result.data}))
     except Exception as e:
         logger.error(f"ERREUR GET /api/hotels: {str(e)}")
         

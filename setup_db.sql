@@ -1,20 +1,9 @@
 -- ============================================================================
--- Supabase Auto-Importer (RMS Sync) v2.0
--- Script d'initialisation complet pour Supabase
+-- Supabase Auto-Importer (RMS Sync) v2.1
+-- Script d'initialisation FINAL et COMPLET pour Supabase
 -- ============================================================================
 
--- 1. NETTOYAGE (Optionnel : à n'utiliser que si vous voulez repartir de zéro)
--- DROP VIEW IF EXISTS public.v_template_summary;
--- DROP FUNCTION IF EXISTS public.execute_sql(text);
--- DROP FUNCTION IF EXISTS public.get_public_tables();
--- DROP FUNCTION IF EXISTS public.get_table_columns(text);
--- DROP TABLE IF EXISTS public.import_templates;
--- DROP TABLE IF EXISTS public.hotels;
-
--- ============================================================================
--- TABLE: hotels
--- Stocke les informations des hôtels gérés
--- ============================================================================
+-- 1. TABLES DE BASE (Configuration et Hôtels)
 CREATE TABLE IF NOT EXISTS public.hotels (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     hotel_id TEXT NOT NULL UNIQUE,
@@ -23,18 +12,6 @@ CREATE TABLE IF NOT EXISTS public.hotels (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Activation de la sécurité (RLS)
-ALTER TABLE public.hotels ENABLE ROW LEVEL SECURITY;
-
--- Politique : Autoriser toutes les opérations pour le rôle service_role (Admin)
-DROP POLICY IF EXISTS "Allow all for service role" ON public.hotels;
-CREATE POLICY "Allow all for service role" ON public.hotels
-    FOR ALL USING (true) WITH CHECK (true);
-
--- ============================================================================
--- TABLE: import_templates
--- Stocke les configurations de mapping pour les imports récurrents
--- ============================================================================
 CREATE TABLE IF NOT EXISTS public.import_templates (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name TEXT NOT NULL,
@@ -49,63 +26,18 @@ CREATE TABLE IF NOT EXISTS public.import_templates (
 );
 
 -- Activation de la sécurité (RLS)
+ALTER TABLE public.hotels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.import_templates ENABLE ROW LEVEL SECURITY;
-
--- Politique : Autoriser toutes les opérations pour le rôle service_role (Admin)
--- Si vous utilisez l'application avec la clé service_role, elle aura accès à tout.
+DROP POLICY IF EXISTS "Allow all for service role" ON public.hotels;
+CREATE POLICY "Allow all for service role" ON public.hotels FOR ALL USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "Allow all for service role" ON public.import_templates;
-CREATE POLICY "Allow all for service role" ON public.import_templates
-    FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for service role" ON public.import_templates FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================================
--- TABLES DE RAPPORTS (D-EDGE, OTA, EVENTS)
--- Ces tables sont utilisées par le traitement automatique
+-- 2. TABLES POUR D-EDGE
 -- ============================================================================
 
--- 1. D-EDGE PLANNING
-CREATE TABLE IF NOT EXISTS public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    hotel_id TEXT NOT NULL,
-    "TYPE DE CHAMBRE" TEXT,
-    "PLAN TARIFAIRE" TEXT,
-    "LEFT FOR SALE" TEXT,
-    "date" DATE,
-    "TARIF / DISPO" TEXT
-);
-
--- 2. D-EDGE RESERVATIONS (En cours & Historique)
--- Structure générique car dépend du fichier Excel
-CREATE TABLE IF NOT EXISTS public."D-EDGE RÉSERVATIONS EN COURS" (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    hotel_id TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS public."D-EDGE HISTORIQUE DES RÉSERVATIONS N-1" (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    hotel_id TEXT NOT NULL
-);
-
--- 3. OTA INSIGHT
-CREATE TABLE IF NOT EXISTS public."OTA APERÇU" ( id UUID DEFAULT gen_random_uuid() PRIMARY KEY, created_at TIMESTAMP DEFAULT now(), hotel_id TEXT NOT NULL );
-CREATE TABLE IF NOT EXISTS public."OTA TARIFS CONCURRENCE" ( id UUID DEFAULT gen_random_uuid() PRIMARY KEY, created_at TIMESTAMP DEFAULT now(), hotel_id TEXT NOT NULL );
-CREATE TABLE IF NOT EXISTS public."OTA VS HIER" ( id UUID DEFAULT gen_random_uuid() PRIMARY KEY, created_at TIMESTAMP DEFAULT now(), hotel_id TEXT NOT NULL );
-CREATE TABLE IF NOT EXISTS public."OTA VS 3 JOURS" ( id UUID DEFAULT gen_random_uuid() PRIMARY KEY, created_at TIMESTAMP DEFAULT now(), hotel_id TEXT NOT NULL );
-CREATE TABLE IF NOT EXISTS public."OTA VS 7 JOURS" ( id UUID DEFAULT gen_random_uuid() PRIMARY KEY, created_at TIMESTAMP DEFAULT now(), hotel_id TEXT NOT NULL );
-
--- 4. SALONS & EVENTS
-CREATE TABLE IF NOT EXISTS public."DATES SALONS ET ÉVÉNEMENTS" (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    hotel_id TEXT NOT NULL
-);
-
--- ============================================================================
--- CREATION DES TABLES RAPPORTS (Si inexistantes)
--- ============================================================================
-
--- 1. D-EDGE PLANNING
+-- D-EDGE PLANNING
 CREATE TABLE IF NOT EXISTS public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" (
     id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -117,127 +49,123 @@ CREATE TABLE IF NOT EXISTS public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAI
     "TARIF / DISPO" TEXT
 );
 
--- 2. OTA APERÇU
+-- D-EDGE RÉSERVATIONS (STRUCTURE COMPLÈTE DÉDUITE)
+CREATE TABLE IF NOT EXISTS public."D-EDGE RÉSERVATIONS EN COURS" (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    hotel_id TEXT,
+    "Id GDS" TEXT, "Statut" TEXT, "Date de réserv." DATE, "Date Arrivée" DATE, "Date Départ" DATE,
+    "Nb nuit(s)" TEXT, "Client" TEXT, "Société" TEXT, "Chambre" TEXT, "Typologie" TEXT,
+    "Plan tarifaire" TEXT, "Gains" TEXT, "Commission" TEXT, "Source" TEXT, "Canal" TEXT,
+    "Nombre de pers." TEXT, "Adultes" TEXT, "Enfants" TEXT, "Commentaires" TEXT
+);
+
+CREATE TABLE IF NOT EXISTS public."D-EDGE HISTORIQUE DES RÉSERVATIONS N-1" (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    hotel_id TEXT,
+    "Id GDS" TEXT, "Statut" TEXT, "Date de réserv." DATE, "Date Arrivée" DATE, "Date Départ" DATE,
+    "Nb nuit(s)" TEXT, "Client" TEXT, "Société" TEXT, "Chambre" TEXT, "Typologie" TEXT,
+    "Plan tarifaire" TEXT, "Gains" TEXT, "Commission" TEXT, "Source" TEXT, "Canal" TEXT,
+    "Nombre de pers." TEXT, "Adultes" TEXT, "Enfants" TEXT, "Commentaires" TEXT
+);
+
+-- ============================================================================
+-- 3. TABLES POUR OTA INSIGHT (SÉRIE COMPLÈTE)
+-- ============================================================================
+
+-- OTA APERÇU
 CREATE TABLE IF NOT EXISTS public."OTA APERÇU" (
     id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     hotel_id TEXT,
-    jour TEXT,
-    date DATE,
-    votre_htel_le_plus_bas TEXT,
-    tarif_le_plus_bas_mdiane_du_compset TEXT,
-    classement_des_tarifs_du_compset TEXT,
-    demande_du_march TEXT,
-    bookingcom_classement TEXT,
-    jours_fris TEXT,
-    vnements TEXT
+    jour TEXT, date DATE,
+    votre_htel_le_plus_bas TEXT, tarif_le_plus_bas_mdiane_du_compset TEXT,
+    classement_des_tarifs_du_compset TEXT, demande_du_march TEXT,
+    bookingcom_classement TEXT, jours_fris TEXT, vnements TEXT
 );
 
--- 3. OTA TARIFS CONCURRENCE (Avec concurrents spécifiques selon Modèle)
-CREATE TABLE IF NOT EXISTS public."OTA TARIFS CONCURRENCE" (
-    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    hotel_id TEXT,
-    jour TEXT,
-    date_date DATE,
-    demande_du_march TEXT,
-    folkestone_opra TEXT,
-    htel_madeleine_haussmann TEXT,
-    htel_de_larcade TEXT,
-    htel_cordelia_opra_madeleine TEXT,
-    queen_mary_opera TEXT,
-    htel_du_triangle_dor TEXT,
-    best_western_plus_hotel_sydney_opera TEXT,
-    hotel_opra_opal TEXT,
-    htel_royal_opra TEXT,
-    hotel_george_sand_opra_paris TEXT,
-    hotel_chavanel TEXT
-);
+-- STRUCTURE COMMUNE POUR TARIFS ET VS
+DO $$
+DECLARE
+    t text;
+    tables text[] := ARRAY['OTA TARIFS CONCURRENCE', 'OTA VS HIER', 'OTA VS 3 JOURS', 'OTA VS 7 JOURS'];
+BEGIN
+    FOREACH t IN ARRAY tables LOOP
+        EXECUTE format('CREATE TABLE IF NOT EXISTS public.%I (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            hotel_id TEXT,
+            jour TEXT,
+            date_date DATE,
+            demande_du_march TEXT,
+            folkestone_opra TEXT,
+            htel_madeleine_haussmann TEXT,
+            htel_de_larcade TEXT,
+            htel_cordelia_opra_madeleine TEXT,
+            queen_mary_opera TEXT,
+            htel_du_triangle_dor TEXT,
+            best_western_plus_hotel_sydney_opera TEXT,
+            hotel_opra_opal TEXT,
+            htel_royal_opra TEXT,
+            hotel_george_sand_opra_paris TEXT,
+            hotel_chavanel TEXT
+        )', t);
+    END LOOP;
+END $$;
 
--- 4. OTA VS HIER
-CREATE TABLE IF NOT EXISTS public."OTA VS HIER" (
-    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    hotel_id TEXT,
-    jour TEXT,
-    date_date DATE,
-    demande_du_march TEXT,
-    folkestone_opra TEXT,
-    htel_madeleine_haussmann TEXT,
-    htel_de_larcade TEXT,
-    htel_cordelia_opra_madeleine TEXT,
-    queen_mary_opera TEXT,
-    htel_du_triangle_dor TEXT,
-    best_western_plus_hotel_sydney_opera TEXT,
-    hotel_opra_opal TEXT,
-    htel_royal_opra TEXT,
-    hotel_george_sand_opra_paris TEXT,
-    hotel_chavanel TEXT
-);
+-- Correction spécifique pour 'OTA VS 7 JOURS' qui utilise 'date' au lieu de 'date_date' dans le dump
+ALTER TABLE public."OTA VS 7 JOURS" RENAME COLUMN date_date TO date;
 
--- 5. OTA VS 3 JOURS
-CREATE TABLE IF NOT EXISTS public."OTA VS 3 JOURS" (
-    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    hotel_id TEXT,
-    jour TEXT,
-    date_date DATE,
-    demande_du_march TEXT,
-    folkestone_opra TEXT,
-    htel_madeleine_haussmann TEXT,
-    htel_de_larcade TEXT,
-    htel_cordelia_opra_madeleine TEXT,
-    queen_mary_opera TEXT,
-    htel_du_triangle_dor TEXT,
-    best_western_plus_hotel_sydney_opera TEXT,
-    hotel_opra_opal TEXT,
-    htel_royal_opra TEXT,
-    hotel_george_sand_opra_paris TEXT,
-    hotel_chavanel TEXT
-);
-
--- 6. OTA VS 7 JOURS
-CREATE TABLE IF NOT EXISTS public."OTA VS 7 JOURS" (
-    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    hotel_id TEXT,
-    jour TEXT,
-    date DATE, -- Note: Utilise 'date' au lieu de 'date_date' contrairement aux autres VS
-    demande_du_march TEXT,
-    folkestone_opra TEXT,
-    htel_madeleine_haussmann TEXT,
-    htel_de_larcade TEXT,
-    htel_cordelia_opra_madeleine TEXT,
-    queen_mary_opera TEXT,
-    htel_du_triangle_dor TEXT,
-    best_western_plus_hotel_sydney_opera TEXT,
-    hotel_opra_opal TEXT,
-    htel_royal_opra TEXT,
-    hotel_george_sand_opra_paris TEXT,
-    hotel_chavanel TEXT
-);
-
--- 7. D-EDGE RESERVATIONS (Structure générique pour l'instant)
-CREATE TABLE IF NOT EXISTS public."D-EDGE RÉSERVATIONS EN COURS" (
-    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    hotel_id TEXT
-    -- Colonnes dynamiques non définies ici, à ajouter si besoin ou utiliser JSONB
-);
-
-CREATE TABLE IF NOT EXISTS public."D-EDGE HISTORIQUE DES RÉSERVATIONS N-1" (
-    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    hotel_id TEXT
-);
-
+-- ============================================================================
+-- 4. SALONS & ÉVÉNEMENTS
+-- ============================================================================
 CREATE TABLE IF NOT EXISTS public."DATES SALONS ET ÉVÉNEMENTS" (
     id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    hotel_id TEXT
+    hotel_id TEXT,
+    "Date début" DATE,
+    "Date fin" DATE,
+    "Nom de l'événement" TEXT,
+    "Type" TEXT,
+    "Lieu" TEXT,
+    "Description" TEXT
 );
 
--- CRITIQUE : S'assurer que hotel_id existe si les tables existaient déjà
+-- ============================================================================
+-- 5. FONCTIONS SYSTÈME (INDISPENSABLES)
+-- ============================================================================
+
+-- Permet l'exécution de SQL dynamique depuis Python
+CREATE OR REPLACE FUNCTION public.execute_sql(sql text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN EXECUTE sql; END; $$;
+
+-- Liste les tables pour l'interface
+CREATE OR REPLACE FUNCTION public.get_public_tables()
+RETURNS TABLE (table_name TEXT, table_type TEXT) LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    RETURN QUERY SELECT t.table_name::TEXT, t.table_type::TEXT FROM information_schema.tables t
+    WHERE t.table_schema = 'public' AND t.table_name NOT LIKE 'pg_%' AND t.table_name NOT LIKE 'sql_%'
+    AND t.table_name != 'import_templates' ORDER BY t.table_name;
+END; $$;
+
+-- Retourne les colonnes d'une table
+CREATE OR REPLACE FUNCTION public.get_table_columns(t_name TEXT)
+RETURNS TABLE (column_name TEXT, data_type TEXT, is_nullable TEXT) LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    RETURN QUERY SELECT c.column_name::TEXT, c.data_type::TEXT, c.is_nullable::TEXT FROM information_schema.columns c
+    WHERE c.table_schema = 'public' AND c.table_name = t_name
+    AND c.column_name NOT IN ('id', 'created_at') ORDER BY c.ordinal_position;
+END; $$;
+
+-- Vue résumé des templates
+CREATE OR REPLACE VIEW public.v_template_summary AS
+SELECT id, name, target_table, source_type, updated_at FROM public.import_templates ORDER BY updated_at DESC;
+
+-- ============================================================================
+-- 6. POLITIQUES DE SÉCURITÉ GLOBALES
+-- ============================================================================
 DO $$
 DECLARE
     t text;
@@ -255,171 +183,10 @@ DECLARE
 BEGIN
     FOREACH t IN ARRAY tables LOOP
         BEGIN
-            EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS hotel_id TEXT', t);
-        EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'Erreur lors de l''ajout de hotel_id pour %: %', t, SQLERRM;
-        END;
-        
-        -- Ajouter les colonnes spécifiques manquantes pour D-EDGE PLANNING
-        IF t = 'D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES' THEN
-            BEGIN
-                EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "LEFT FOR SALE" TEXT';
-                EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "TYPE DE CHAMBRE" TEXT';
-                EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "PLAN TARIFAIRE" TEXT';
-                EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "TARIF / DISPO" TEXT';
-                EXECUTE 'ALTER TABLE public."D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES" ADD COLUMN IF NOT EXISTS "date" DATE';
-            EXCEPTION WHEN OTHERS THEN
-                RAISE NOTICE 'Erreur colonnes D-EDGE: %', SQLERRM;
-            END;
-        END IF;
-
-        -- Ajouter les colonnes spécifiques manquantes pour OTA APERÇU
-        IF t = 'OTA APERÇU' THEN
-            BEGIN
-                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS jour TEXT';
-                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS date DATE';
-                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS votre_htel_le_plus_bas TEXT';
-                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS tarif_le_plus_bas_mdiane_du_compset TEXT';
-                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS classement_des_tarifs_du_compset TEXT';
-                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS demande_du_march TEXT';
-                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS bookingcom_classement TEXT';
-                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS jours_fris TEXT';
-                EXECUTE 'ALTER TABLE public."OTA APERÇU" ADD COLUMN IF NOT EXISTS vnements TEXT';
-            EXCEPTION WHEN OTHERS THEN
-                RAISE NOTICE 'Erreur colonnes OTA APERÇU: %', SQLERRM;
-            END;
-        END IF;
-
-        -- Ajouter les colonnes spécifiques manquantes pour OTA TARIFS et VS (Structure commune)
-        IF t IN ('OTA TARIFS CONCURRENCE', 'OTA VS HIER', 'OTA VS 3 JOURS', 'OTA VS 7 JOURS') THEN
-            BEGIN
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS jour TEXT', t);
-                IF t = 'OTA VS 7 JOURS' THEN
-                    EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS date DATE', t);
-                ELSE
-                    EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS date_date DATE', t);
-                END IF;
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS demande_du_march TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS folkestone_opra TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS htel_madeleine_haussmann TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS htel_de_larcade TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS htel_cordelia_opra_madeleine TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS queen_mary_opera TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS htel_du_triangle_dor TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS best_western_plus_hotel_sydney_opera TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS hotel_opra_opal TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS htel_royal_opra TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS hotel_george_sand_opra_paris TEXT', t);
-                EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS hotel_chavanel TEXT', t);
-            EXCEPTION WHEN OTHERS THEN
-                RAISE NOTICE 'Erreur colonnes OTA % : %', t, SQLERRM;
-            END;
-        END IF;
-        
-        -- Ajouter la policy RLS pour chaque table report
-        BEGIN
             EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
             EXECUTE format('DROP POLICY IF EXISTS "Allow all" ON public.%I', t);
             EXECUTE format('CREATE POLICY "Allow all" ON public.%I FOR ALL USING (true) WITH CHECK (true)', t);
-        EXCEPTION WHEN OTHERS THEN
-            NULL;
+        EXCEPTION WHEN OTHERS THEN NULL;
         END;
     END LOOP;
 END $$;
-
-
--- ============================================================================
--- FONCTION: execute_sql(sql_query text)
--- CRITIQUE : Permet à Python d'exécuter des commandes de structure (CREATE TABLE)
--- ============================================================================
-CREATE OR REPLACE FUNCTION public.execute_sql(sql text)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER -- Exécuté avec les privilèges de l'admin
-AS $$
-BEGIN
-    EXECUTE sql;
-END;
-$$;
-
-COMMENT ON FUNCTION public.execute_sql IS 'Permet l exécution de SQL dynamique (utilisé pour la création automatique de tables).';
-
-
--- ============================================================================
--- FONCTION: get_public_tables()
--- Liste les tables pour les proposer dans l interface (Etape 2)
--- ============================================================================
-CREATE OR REPLACE FUNCTION public.get_public_tables()
-RETURNS TABLE (
-    table_name TEXT,
-    table_type TEXT
-)
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT
-        t.table_name::TEXT,
-        t.table_type::TEXT
-    FROM information_schema.tables t
-    WHERE t.table_schema = 'public'
-    AND t.table_name NOT LIKE 'pg_%'
-    AND t.table_name NOT LIKE 'sql_%'
-    -- On exclut la table des templates elle-même de la liste d'import
-    AND t.table_name != 'import_templates'
-    ORDER BY t.table_name;
-END;
-$$;
-
-
--- ============================================================================
--- FONCTION: get_table_columns(t_name TEXT)
--- Retourne les colonnes et types d une table pour le mapping (Etape 3)
--- ============================================================================
-CREATE OR REPLACE FUNCTION public.get_table_columns(t_name TEXT)
-RETURNS TABLE (
-    column_name TEXT,
-    data_type TEXT,
-    is_nullable TEXT
-)
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT
-        c.column_name::TEXT,
-        c.data_type::TEXT,
-        c.is_nullable::TEXT
-    FROM information_schema.columns c
-    WHERE c.table_schema = 'public'
-    AND c.table_name = t_name
-    -- On exclut les colonnes techniques générées par défaut
-    AND c.column_name NOT IN ('id', 'created_at')
-    ORDER BY c.ordinal_position;
-END;
-$$;
-
-
--- ============================================================================
--- VUE: v_template_summary
--- Résumé lisible des templates pour la barre latérale
--- ============================================================================
-CREATE OR REPLACE VIEW public.v_template_summary AS
-SELECT
-    id,
-    name,
-    target_table,
-    source_type,
-    updated_at
-FROM public.import_templates
-ORDER BY updated_at DESC;
-
-
--- ============================================================================
--- INDEX & COMMENTAIRES
--- ============================================================================
-CREATE INDEX IF NOT EXISTS idx_import_templates_target ON public.import_templates(target_table);
-
-COMMENT ON TABLE public.import_templates IS 'Configuration ETL pour RMS Sync v2.0';
