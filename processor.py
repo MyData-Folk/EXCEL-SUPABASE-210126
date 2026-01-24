@@ -68,6 +68,8 @@ class DedgePlanningProcessor(BaseProcessor):
         self.target_table = "D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES"
         self.read_excel(header=None)
         
+        logger.info(f"Planning: DataFrame shape = {self.df.shape}")
+        
         # --- DETECTION ULTRA-ROBUSTE DE LA LIGNE DE DATE ---
         date_row_idx = None
         
@@ -90,10 +92,10 @@ class DedgePlanningProcessor(BaseProcessor):
                     # Essayer de parser comme string
                     parsed_date = pd.to_datetime(test_val, dayfirst=True, errors='coerce')
                 
-                # Valider que la date est dans une plage raisonnable (2024-2027)
+                # Valider que la date est dans une plage raisonnable (2020-2030) - ÉLARGI
                 if parsed_date and not pd.isna(parsed_date):
                     year = parsed_date.year
-                    if 2024 <= year <= 2027:
+                    if 2020 <= year <= 2030:
                         date_row_idx = r_idx
                         logger.info(f"✓ Date row trouvée à l'index {r_idx}, date test: {parsed_date.strftime('%Y-%m-%d')}")
                         break
@@ -125,9 +127,9 @@ class DedgePlanningProcessor(BaseProcessor):
                 else:
                     parsed_date = pd.to_datetime(val, dayfirst=True, errors='coerce')
                 
-                # Validation finale
+                # Validation finale - ÉLARGI à 2020-2030
                 if parsed_date and not pd.isna(parsed_date):
-                    if 2024 <= parsed_date.year <= 2027:
+                    if 2020 <= parsed_date.year <= 2030:
                         dates.append(parsed_date.strftime('%Y-%m-%d'))
                     else:
                         logger.warning(f"Date col {col_idx} ignorée (année {parsed_date.year})")
@@ -136,6 +138,8 @@ class DedgePlanningProcessor(BaseProcessor):
                     dates.append(None)
             except:
                 dates.append(None)
+        
+        logger.info(f"Planning: {len([d for d in dates if d])} dates valides détectées")
         
         # Données utiles à partir de Row (date_row_idx + 2)
         data_rows = self.df.iloc[date_row_idx + 2:]
@@ -169,6 +173,9 @@ class DedgePlanningProcessor(BaseProcessor):
         
         self.df = pd.DataFrame(records)
         logger.info(f"Planning: {len(records)} enregistrements générés")
+        
+        if len(records) == 0:
+            logger.error(f"ALERTE: 0 enregistrements générés! date_row_idx={date_row_idx}, dates_valides={len([d for d in dates if d])}, data_rows={len(data_rows)}")
 
 class DedgeReservationProcessor(BaseProcessor):
     def apply_transformations(self):

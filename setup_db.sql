@@ -57,9 +57,9 @@ CREATE TABLE IF NOT EXISTS public."D-EDGE RÉSERVATIONS EN COURS" (
     "Id GDS" TEXT, "Statut" TEXT, "Date de réserv." DATE, "Date Arrivée" DATE, "Date Départ" DATE,
     "Nb nuit(s)" TEXT, "Client" TEXT, "Société" TEXT, "Chambre" TEXT, "Typologie" TEXT,
     "Plan tarifaire" TEXT, "Gains" TEXT, "Commission" TEXT, "Source" TEXT, "Canal" TEXT,
-    "Nombre de pers." TEXT, "Adultes" TEXT, "Enfants" TEXT, "Commentaires" TEXT,
+    "Nombre de pers." TEXT, "Adultes" TEXT, "Enfants" TEXT, "Bébés" TEXT, "Commentaires" TEXT,
     "Assurance annulation" TEXT, "Montant assurance" TEXT, "Code promo" TEXT,
-    "Petit déjeuner" TEXT, "Parking" TEXT, "Animaux" TEXT
+    "Petit déjeuner" TEXT, "Parking" TEXT, "Animaux" TEXT, "Extras" TEXT
 );
 
 CREATE TABLE IF NOT EXISTS public."D-EDGE HISTORIQUE DES RÉSERVATIONS N-1" (
@@ -69,9 +69,9 @@ CREATE TABLE IF NOT EXISTS public."D-EDGE HISTORIQUE DES RÉSERVATIONS N-1" (
     "Id GDS" TEXT, "Statut" TEXT, "Date de réserv." DATE, "Date Arrivée" DATE, "Date Départ" DATE,
     "Nb nuit(s)" TEXT, "Client" TEXT, "Société" TEXT, "Chambre" TEXT, "Typologie" TEXT,
     "Plan tarifaire" TEXT, "Gains" TEXT, "Commission" TEXT, "Source" TEXT, "Canal" TEXT,
-    "Nombre de pers." TEXT, "Adultes" TEXT, "Enfants" TEXT, "Commentaires" TEXT,
+    "Nombre de pers." TEXT, "Adultes" TEXT, "Enfants" TEXT, "Bébés" TEXT, "Commentaires" TEXT,
     "Assurance annulation" TEXT, "Montant assurance" TEXT, "Code promo" TEXT,
-    "Petit déjeuner" TEXT, "Parking" TEXT, "Animaux" TEXT
+    "Petit déjeuner" TEXT, "Parking" TEXT, "Animaux" TEXT, "Extras" TEXT
 );
 
 -- ============================================================================
