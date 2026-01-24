@@ -92,15 +92,16 @@ class DedgePlanningProcessor(BaseProcessor):
                     # Essayer de parser comme string
                     parsed_date = pd.to_datetime(test_val, dayfirst=True, errors='coerce')
                 
-                # Valider que la date est dans une plage raisonnable (2020-2030) - ÉLARGI
+                # Valider que la date est dans une plage raisonnable
                 if parsed_date and not pd.isna(parsed_date):
                     year = parsed_date.year
-                    if 2020 <= year <= 2030:
+                    # TEMPORAIRE: Accepter toutes les années pour diagnostic
+                    if year > 1900:  # Juste éviter les erreurs de parsing évidentes
                         date_row_idx = r_idx
-                        logger.info(f"✓ Date row trouvée à l'index {r_idx}, date test: {parsed_date.strftime('%Y-%m-%d')}")
+                        logger.info(f"✓ Date row trouvée à l'index {r_idx}, date test: {parsed_date.strftime('%Y-%m-%d')} (année {year})")
                         break
                     else:
-                        logger.warning(f"✗ Row {r_idx} a une date hors plage: {year}")
+                        logger.warning(f"✗ Row {r_idx} a une date invalide: {year}")
             except Exception as e:
                 logger.debug(f"Row {r_idx} test failed: {e}")
                 continue
@@ -127,9 +128,9 @@ class DedgePlanningProcessor(BaseProcessor):
                 else:
                     parsed_date = pd.to_datetime(val, dayfirst=True, errors='coerce')
                 
-                # Validation finale - ÉLARGI à 2020-2030
+                # Validation finale - TEMPORAIRE: accepter toutes les années > 1900
                 if parsed_date and not pd.isna(parsed_date):
-                    if 2020 <= parsed_date.year <= 2030:
+                    if parsed_date.year > 1900:
                         dates.append(parsed_date.strftime('%Y-%m-%d'))
                     else:
                         logger.warning(f"Date col {col_idx} ignorée (année {parsed_date.year})")
