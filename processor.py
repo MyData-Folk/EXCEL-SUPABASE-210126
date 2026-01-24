@@ -265,8 +265,6 @@ class OtaInsightProcessor(BaseProcessor):
         # Supprimer les lignes où 'date' est vide (souvent des lignes de résumé en bas)
         if 'date' in self.df.columns:
             self.df = self.df.dropna(subset=['date'])
-        elif 'date_date' in self.df.columns:
-             self.df = self.df.dropna(subset=['date_date'])
 
 class SalonsEventsProcessor(BaseProcessor):
     def apply_transformations(self):

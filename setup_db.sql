@@ -101,7 +101,7 @@ BEGIN
             created_at TIMESTAMPTZ DEFAULT NOW(),
             hotel_id TEXT,
             jour TEXT,
-            date_date DATE,
+            date DATE,
             demande_du_march TEXT,
             folkestone_opra TEXT,
             hotel_madeleine_haussmann TEXT,
@@ -117,9 +117,6 @@ BEGIN
         )', t);
     END LOOP;
 END $$;
-
--- Correction spécifique pour 'OTA VS 7 JOURS' qui utilise 'date' au lieu de 'date_date' dans le dump
-ALTER TABLE public."OTA VS 7 JOURS" RENAME COLUMN date_date TO date;
 
 -- ============================================================================
 -- 4. SALONS & ÉVÉNEMENTS
