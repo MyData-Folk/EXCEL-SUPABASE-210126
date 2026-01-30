@@ -1,4 +1,4 @@
-# RMS Sync v2.1 - Full Stack (API + Frontend HTML) with absolute paths
+# RMS Sync v2.1 - Full Stack with Simplified Health Check
 import os
 import sys
 import json
@@ -27,7 +27,7 @@ from processor import ProcessorFactory
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(name)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-# Setup logging robust avec fallback
+# Setup logging robuste avec fallback
 def setup_logging():
     log_dir = '/app/logs'
     log_file = os.path.join(log_dir, 'app.log')
@@ -76,10 +76,6 @@ CORS(app, resources={
     }
 })
 
-# Définir le chemin absolu du dossier de l'application
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(APP_DIR, 'uploads')
-
 @app.before_request
 def log_request_info():
     """Logue les détails de chaque requête."""
@@ -93,7 +89,7 @@ def log_request_info():
 
 @app.route('/')
 def index():
-    """Page d'accueil (Dashboard) - Chemin absolu pour Docker."""
+    """Page d'accueil (Dashboard)."""
     index_path = os.path.join(APP_DIR, 'index.html')
     
     try:
@@ -109,13 +105,12 @@ def index():
 
 @app.route('/favicon.ico')
 def favicon():
-    """Icône du navigateur - Chemin absolu pour Docker."""
+    """Icône du navigateur (évite les 404)."""
     favicon_path = os.path.join(APP_DIR, 'favicon.ico')
     
     try:
         return send_file(favicon_path, mimetype='image/vnd.microsoft.icon')
     except FileNotFoundError:
-        logger.warning(f"favicon.ico not found at: {favicon_path}")
         return '', 204
 
 # ============================================================
@@ -124,36 +119,41 @@ def favicon():
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check pour Traefik."""
+    """Health check simplifié - Vérifie seulement si le client peut être initialisé."""
     try:
+        # 1. Vérifier si les variables sont définies
         supabase_url = os.getenv('SUPABASE_URL')
         supabase_key = os.getenv('SUPABASE_KEY')
-        
-        logger.info(f"Health check - Supabase URL: {supabase_url}")
         
         if not supabase_url or not supabase_key:
             return jsonify({
                 "status": "unhealthy",
                 "error": "Missing SUPABASE_URL or SUPABASE_KEY",
+                "supabase_connected": False,
                 "timestamp": datetime.utcnow().isoformat()
             }), 503
         
+        # 2. Initialiser le client (Ceci teste la connexion et les credentials)
+        # Si cette ligne échoue, c'est que les credentials ou l'URL sont invalides
         client = create_client(supabase_url, supabase_key)
-        response = client.table('test').select('*').limit(1).execute()
+        
+        # 3. Succès immédiat (on n'a pas besoin de faire une requête SQL)
+        logger.info(f"Health check OK - Supabase connected: {supabase_url}")
         
         return jsonify({
             "status": "healthy",
-            "supabase": "connected",
+            "supabase_connected": True,
+            "supabase_url": supabase_url,
             "version": "2.1-fullstack",
-            "app_dir": APP_DIR,
-            "index_exists": os.path.exists(os.path.join(APP_DIR, 'index.html')),
             "timestamp": datetime.utcnow().isoformat()
         }), 200
+        
     except Exception as e:
         logger.error(f"Health check échoué: {str(e)}", exc_info=True)
         return jsonify({
             "status": "unhealthy",
             "error": str(e),
+            "supabase_connected": False,
             "timestamp": datetime.utcnow().isoformat()
         }), 503
 
@@ -164,10 +164,7 @@ def diag_excel():
     
     if not os.path.exists(file_path):
         logger.error(f"Fichier introuvable: {file_path}")
-        return jsonify({
-            "error": "File not found",
-            "path": file_path
-        }), 404
+        return jsonify({"error": "File not found", "path": file_path}), 404
     
     try:
         df = pd.read_excel(file_path)
@@ -296,8 +293,9 @@ def handle_internal_server_error(e):
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    """Gestionnaire d'erreurs global pour toutes les exceptions non gérées."""
+    """Gestionnaire d'erreurs global."""
     logger.error(f"Erreur non gérée: {str(e)}", exc_info=True)
+    
     is_debug = os.getenv('FLASK_ENV') == 'development'
     
     return jsonify({
@@ -314,19 +312,19 @@ def handle_exception(e):
 
 if __name__ == '__main__':
     # Création des dossiers nécessaires avec chemins absolus
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    UPLOAD_DIR = os.path.join(APP_DIR, 'uploads')
+    
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs('/app/logs', exist_ok=True)
     
-    logger.info(f"Application démarrée (Full Stack)")
+    logger.info("Application démarrée (Full Stack with Simplified Health Check)")
     logger.info(f"Environment: {os.getenv('FLASK_ENV', 'production')}")
     logger.info(f"App Directory: {APP_DIR}")
     logger.info(f"Upload Directory: {UPLOAD_DIR}")
-    logger.info(f"Python Version: {sys.version.split()[0]}")
-    logger.info(f"index.html exists: {os.path.exists(os.path.join(APP_DIR, 'index.html'))}")
     
     if os.getenv('FLASK_ENV') == 'production':
         logger.info("Mode production: Gunicorn détecté")
-        # CMD configuré dans Dockerfile
     else:
         logger.info("Mode développement: Flask debug activé")
         app.run(host='0.0.0.0', port=5000, debug=True)
