@@ -27,7 +27,7 @@ def json_safe(obj):
         except (ValueError, AttributeError):
             return None
     # CORRECTION: Gérer les types pandas NaT natifs
-    elif isinstance(obj, pd.NaTType):
+    elif pd.isna(obj) and (hasattr(obj, 'isoformat') or 'NaT' in str(type(obj))):
         return None
     # CORRECTION: Gérer les types pandas natifs
     elif isinstance(obj, (pd.Series, pd.DataFrame)):
