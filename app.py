@@ -72,11 +72,27 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_DIR
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 def get_supabase_client() -> Client:
-    url = os.getenv('SUPABASE_URL')
-    key = os.getenv('SUPABASE_KEY')
+    # Récupération robuste (Casse, Préfixe)
+    url = os.getenv('SUPABASE_URL') or os.getenv('supabase_url')
+    key = os.getenv('SUPABASE_KEY') or os.getenv('supabase_key')
+    
     if not url or not key:
+        logger.critical(f"CONFIG ERROR: SUPABASE_URL ({'OK' if url else 'MISSING'}) or SUPABASE_KEY ({'OK' if key else 'MISSING'}) are not set.")
         raise ValueError("SUPABASE_URL or SUPABASE_KEY not set")
     return create_client(url, key)
+
+# ============================================================
+# GLOBAL ERROR HANDLER
+# ============================================================
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Log l'exception avec traceback complet
+    logger.error(f"UNHANDLED EXCEPTION: {str(e)}\n{traceback.format_exc()}")
+    return jsonify({
+        "error": "Internal Server Error",
+        "message": str(e),
+        "trace": traceback.format_exc() if app.debug else None
+    }), 500
 
 # ============================================================
 # UTILS & HELPERS

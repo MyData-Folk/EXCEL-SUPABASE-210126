@@ -6,34 +6,32 @@ from datetime import datetime
 
 def json_safe(obj):
     """
-    Rend un objet (dict, list, etc.) compatible JSON en remplaçant 
-    les NaN, Inf et NaT par None.
-    CORRECTION: Gère explicitement NaT (Not a Time) avant d'essayer .isoformat()
+    Rend un objet compatible JSON en remplaçant 
+    les NaN, Inf et NaT par None de manière robuste.
     """
     if isinstance(obj, dict):
         return {k: json_safe(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [json_safe(v) for v in obj]
-    elif isinstance(obj, float):
-        if math.isnan(obj) or math.isinf(obj):
+    
+    # Cas des types "non-valeurs" de pandas (NaN, NaT, None, NA)
+    if pd.isna(obj):
+        return None
+        
+    if isinstance(obj, float):
+        if math.isinf(obj):
             return None
         return obj
-    elif isinstance(obj, (datetime, pd.Timestamp)):
-        # CORRECTION: Vérifier si c'est NaT (Not a Time) avant d'essayer .isoformat()
-        if isinstance(obj, pd.Timestamp) and pd.isna(obj):
-            return None
+    
+    if isinstance(obj, (datetime, pd.Timestamp)):
         try:
             return obj.isoformat()
-        except (ValueError, AttributeError):
+        except:
             return None
-    # CORRECTION: Gérer les types pandas NaT natifs
-    elif pd.isna(obj) and (hasattr(obj, 'isoformat') or 'NaT' in str(type(obj))):
-        return None
-    # CORRECTION: Gérer les types pandas natifs
-    elif isinstance(obj, (pd.Series, pd.DataFrame)):
-        # Pour les Series/DataFrames, on ne les sérialise pas directement à l'extérieur
-        # On les convertit en dict/list récursivement
-        return str(obj) if pd.isna(obj) else obj
+            
+    if isinstance(obj, (pd.Series, pd.DataFrame)):
+        return obj.to_dict()
+        
     return obj
 
 def snake_case(text):
