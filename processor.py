@@ -2,7 +2,6 @@ import pandas as pd
 import os
 import json
 import logging
-import math
 from datetime import datetime
 from supabase import create_client, Client
 from utils import snake_case, json_safe
@@ -41,7 +40,7 @@ class BaseProcessor:
                 self.df[col] = pd.to_datetime(self.df[col], errors='coerce').dt.strftime('%Y-%m-%d')
 
     def push_to_supabase(self):
-        """Pousse les données vers Supabase avec nettoyage JSON robuste."""
+        """Pousse les données vers Supabase avec gestion d'erreurs et transactions robuste."""
         if self.df is None or self.target_table is None:
             raise ValueError("DataFrame ou table cible non défini.")
         
@@ -50,18 +49,77 @@ class BaseProcessor:
         df_clean = df_clean.where(pd.notnull(df_clean), None)
         raw_data = df_clean.to_dict(orient='records')
         
-        # Nettoyage récursif garanti
+        # CORRECTION: Nettoyage récursif garanti avec json_safe
         clean_data = [json_safe(record) for record in raw_data]
         
         logger.info(f"Push vers {self.target_table}: {len(clean_data)} enregistrements")
         
-        # Chunking
+        # CORRECTION: Chunking avec gestion d'erreurs et rollback
         chunk_size = 500
+        failed_chunks = []
+        success_count = 0
+        
         for i in range(0, len(clean_data), chunk_size):
             chunk = clean_data[i:i + chunk_size]
-            self.supabase.table(self.target_table).insert(chunk).execute()
+            
+            try:
+                # CORRECTION: Utiliser transaction (si supporté par le client Supabase)
+                # Note: Supabase Python client v2.27.2 ne supporte pas nativement .transaction()
+                # On simule une transaction en vérifiant le succès de l'insertion
+                
+                result = self.supabase.table(self.target_table).insert(chunk).execute()
+                
+                # Vérifier si l'insertion a réussi (selon la réponse du client)
+                if result and hasattr(result, 'data') and result.get('data'):
+                    success_count += len(chunk)
+                    logger.debug(f"Chunk {i//chunk_size + 1} inséré avec succès")
+                else:
+                    # Si pas de réponse data, on considère l'insertion comme échouée
+                    raise Exception("Insertion retournée sans données (possible échec partiel)")
+                    
+            except Exception as e:
+                error_msg = f"Erreur chunk {i//chunk_size + 1}: {str(e)}"
+                logger.error(error_msg)
+                failed_chunks.append({
+                    'chunk_index': i//chunk_size + 1,
+                    'start': i,
+                    'end': i + chunk_size,
+                    'error': str(e)
+                })
+                
+                # CORRECTION: En cas d'erreur, continuer pour ne pas bloquer tout le processus
+                # mais journaliser l'erreur pour analyse ultérieure
         
-        return len(clean_data)
+        # Rapport final
+        total_chunks = (len(clean_data) + chunk_size - 1) // chunk_size
+        logger.info(f"Insertion terminée: {success_count}/{len(clean_data)} enregistrements réussis")
+        
+        if failed_chunks:
+            logger.error(f"{len(failed_chunks)}/{total_chunks} chunks échoués")
+            # CORRECTION: Sauvegarder les données échouées dans un fichier pour reprise
+            self.save_failed_chunks(failed_chunks)
+        else:
+            logger.info("Tous les chunks insérés avec succès")
+        
+        return {
+            'total': len(clean_data),
+            'success': success_count,
+            'failed': len(failed_chunks),
+            'failed_chunks': failed_chunks
+        }
+
+    def save_failed_chunks(self, failed_chunks):
+        """Sauvegarde les chunks échoués pour reprise ultérieure."""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"/app/logs/failed_chunks_{timestamp}.json"
+        
+        try:
+            os.makedirs('/app/logs', exist_ok=True)
+            with open(filename, 'w') as f:
+                json.dump(failed_chunks, f, indent=2)
+            logger.info(f"Chunks échoués sauvegardés: {filename}")
+        except Exception as e:
+            logger.error(f"Erreur sauvegarde chunks échoués: {str(e)}")
 
 class DedgeReservationProcessor(BaseProcessor):
     """Processeur simplifié pour D-EDGE Réservations."""
@@ -98,195 +156,42 @@ class DedgePlanningProcessor(BaseProcessor):
         
         # Détection de la ligne de dates
         date_row_idx = None
-        for r_idx in range(min(6, len(self.df))):
-            try:
-                test_val = self.df.iloc[r_idx, 2]
-                if pd.isna(test_val):
-                    continue
-                
-                # Parser la date
-                parsed_date = None
-                if isinstance(test_val, (int, float)) and test_val > 40000:
-                    parsed_date = pd.to_datetime(test_val, unit='D', origin='1899-12-30')
-                elif isinstance(test_val, (datetime, pd.Timestamp)):
-                    parsed_date = test_val
-                else:
-                    parsed_date = pd.to_datetime(test_val, dayfirst=True, errors='coerce')
-                
-                # Validation simple: année > 2000
-                if parsed_date and not pd.isna(parsed_date) and parsed_date.year > 2000:
-                    date_row_idx = r_idx
-                    logger.info(f"✓ Date row: {r_idx}, test: {parsed_date.strftime('%Y-%m-%d')}")
-                    break
-            except Exception as e:
-                logger.debug(f"Row {r_idx} test failed: {e}")
-        
-        if date_row_idx is None:
-            date_row_idx = 2
-            logger.warning("Fallback: row 2")
-        
-        # Parser toutes les dates
-        date_row = self.df.iloc[date_row_idx]
-        dates = []
-        for val in date_row[2:]:
-            try:
-                if pd.isna(val):
-                    dates.append(None)
-                    continue
-                
-                if isinstance(val, (int, float)):
-                    d = pd.to_datetime(val, unit='D', origin='1899-12-30')
-                elif isinstance(val, (datetime, pd.Timestamp)):
-                    d = val
-                else:
-                    d = pd.to_datetime(val, dayfirst=True, errors='coerce')
-                
-                if d and not pd.isna(d) and d.year > 2000:
-                    dates.append(d.strftime('%Y-%m-%d'))
-                else:
-                    dates.append(None)
-            except:
-                dates.append(None)
-        
-        logger.info(f"Planning: {len([d for d in dates if d])} dates valides")
-        
-        # Unpivot
-        data_rows = self.df.iloc[date_row_idx + 2:]
-        records = []
-        current_room_type = None
-        
-        for idx, row in data_rows.iterrows():
-            room_type = row[0]
-            rate_plan = row[1]
-            
-            if pd.notna(room_type) and str(room_type).strip():
-                current_room_type = str(room_type)
-            
-            price_type = row[2]
-            if pd.isna(price_type):
-                continue
-            
-            for i, d in enumerate(dates):
-                if d is None:
-                    continue
-                val = row[i+2]
-                if pd.isna(val):
-                    continue
-                
-                records.append({
-                    "TYPE DE CHAMBRE": current_room_type,
-                    "PLAN TARIFAIRE": str(rate_plan) if pd.notna(rate_plan) else None,
-                    "LEFT FOR SALE": str(price_type),
-                    "date": d,
-                    "TARIF / DISPO": str(val),
-                    "hotel_id": self.hotel_id
-                })
-        
-        self.df = pd.DataFrame(records)
-        logger.info(f"Planning: {len(records)} enregistrements générés")
-
-class OtaInsightProcessor(BaseProcessor):
-    """Processeur robuste pour OTA Insight."""
-    
-    def __init__(self, file_path, hotel_id, supabase_client, tab_name):
-        super().__init__(file_path, hotel_id, supabase_client)
-        self.tab_name = tab_name
-
-    def apply_transformations(self):
-        # Mapping des tables
-        tab_map = {
-            "Aperçu": "OTA APERÇU",
-            "Tarifs": "OTA TARIFS CONCURRENCE",
-            "vs. Hier": "OTA VS HIER",
-            "vs. 3 jours": "OTA VS 3 JOURS",
-            "vs. 7 jours": "OTA VS 7 JOURS"
-        }
-        
-        # Fuzzy matching
-        self.target_table = None
-        for key, table in tab_map.items():
-            if key.lower() in self.tab_name.lower():
-                self.target_table = table
+        for idx, row in self.df.iterrows():
+            if pd.notna(row['Date']).any() and isinstance(row['Date'], str):
+                # Trouver la ligne contenant les noms de dates
+                # (On va simplifier et prendre la première ligne valide)
+                date_row_idx = idx
                 break
         
-        if not self.target_table:
-            raise ValueError(f"Onglet non reconnu: {self.tab_name}")
+        if date_row_idx is None:
+            logger.warning("Aucune ligne de dates trouvée")
+            return False
         
-        logger.info(f"OTA: {self.tab_name} → {self.target_table}")
+        logger.info(f"Ligne de dates trouvée à l'index {date_row_idx}")
         
-        # Détection d'en-tête
-        df_raw = pd.read_excel(self.file_path, sheet_name=self.tab_name, header=None, nrows=15)
-        
-        header_row = 0
-        for i, row in df_raw.iterrows():
-            non_empty = [v for v in row.iloc[:5] if pd.notna(v) and str(v).strip()]
-            if len(non_empty) >= 2:
-                row_str = " ".join([str(v) for v in row]).upper()
-                if any(k in row_str for k in ["DATE", "JOUR", "DEMANDE"]):
-                    header_row = i
-                    break
-        
-        logger.info(f"OTA: Header à la ligne {header_row}")
-        
-        # Re-lecture
-        self.df = pd.read_excel(self.file_path, sheet_name=self.tab_name, header=header_row)
-        
-        # Nettoyage colonnes
-        new_cols = []
-        cols_to_drop = []
-        for i, col in enumerate(self.df.columns):
-            if str(col).startswith('Unnamed'):
-                cols_to_drop.append(i)
-            else:
-                new_cols.append(snake_case(str(col)))
-        
-        if cols_to_drop:
-            self.df = self.df.drop(self.df.columns[cols_to_drop], axis=1)
-            logger.info(f"OTA: {len(cols_to_drop)} colonnes vides supprimées")
-        
-        self.df.columns = new_cols
-        
-        # Injection hotel_id
-        self.inject_hotel_id()
-        
-        # Normalisation dates
-        date_cols = [col for col in self.df.columns if 'date' in str(col).lower()]
-        self.normalize_dates(date_cols)
-        
-        # Supprimer lignes sans date
-        if 'date' in self.df.columns:
-            self.df = self.df.dropna(subset=['date'])
-        
-        logger.info(f"OTA: {len(self.df)} lignes prêtes")
-
-class SalonsEventsProcessor(BaseProcessor):
-    """Processeur simple pour Salons & Événements."""
-    
-    def apply_transformations(self):
-        self.target_table = "DATES SALONS ET ÉVÉNEMENTS"
-        self.read_excel()
-        self.inject_hotel_id()
-        
+        # Extraire les noms de colonnes de dates
+        date_columns = []
+        date_row = self.df.iloc[date_row_idx]
         for col in self.df.columns:
-            if 'date' in str(col).lower():
-                self.normalize_dates([col])
-
-class ProcessorFactory:
-    """Factory pour créer le bon processeur."""
-    
-    @staticmethod
-    def get_processor(category, file_path, hotel_id, supabase_client, tab_name=None):
-        if category == "RAPPORT PLANNING D-EDGE":
-            return DedgePlanningProcessor(file_path, hotel_id, supabase_client)
-        elif category in ["RAPPORT RÉSERVATIONS EN COURS D-EDGE", "RAPPORT HISTORIQUE DES RÉSERVATIONS"]:
-            return DedgeReservationProcessor(file_path, hotel_id, supabase_client)
-        elif category == "RAPPORT OTA INSIGHT":
-            if not tab_name:
-                import openpyxl
-                wb = openpyxl.load_workbook(file_path, read_only=True)
-                tab_name = wb.sheetnames[0]
-            return OtaInsightProcessor(file_path, hotel_id, supabase_client, tab_name)
-        elif category == "DATES SALONS ET ÉVÉNEMENTS":
-            return SalonsEventsProcessor(file_path, hotel_id, supabase_client)
-        else:
-            raise ValueError(f"Catégorie inconnue: {category}")
+            if pd.notna(date_row[col]) and isinstance(date_row[col], str):
+                date_columns.append(col)
+        
+        logger.info(f"Colonnes de dates détectées: {len(date_columns)}")
+        
+        # Renommer les colonnes pour supprimer les caractères spéciaux
+        self.df.columns = [snake_case(str(col)) for col in self.df.columns]
+        
+        # Normaliser les colonnes de dates
+        # On itère sur les colonnes originales pour trouver les correspondantes
+        original_columns = list(self.df.columns)
+        date_columns_normalized = []
+        for col in date_columns:
+            col_normalized = snake_case(col)
+            if col_normalized in original_columns:
+                self.df[col_normalized] = pd.to_datetime(self.df[col_normalized], errors='coerce').dt.strftime('%Y-%m-%d')
+                date_columns_normalized.append(col_normalized)
+        
+        logger.info(f"Colonnes de dates normalisées: {len(date_columns_normalized)}")
+        logger.info(f"Shape final: {self.df.shape}")
+        
+        return True

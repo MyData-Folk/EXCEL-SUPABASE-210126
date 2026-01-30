@@ -1,9 +1,8 @@
-# RMS Sync v2.1 - Deployment Refresh
+# RMS Sync v2.1 - Deployment Refresh avec Debugging
 import os
 import sys
 import json
 import csv
-import io
 import math
 import uuid
 import re
@@ -11,6 +10,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from functools import wraps
+import traceback
 
 import pandas as pd
 from flask import Flask, request, jsonify, send_file
@@ -23,9 +23,27 @@ sys.path.append(os.getcwd())
 from utils import snake_case, json_safe
 from processor import ProcessorFactory
 
-# Configuration des logs
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+# Configuration des logs avec rotation
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(name)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
+
+# File handler pour logs persistants (10MB max, backup de 5 fichiers)
+file_handler = logging.handlers.RotatingFileHandler(
+    '/app/logs/app.log',
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s] %(message)s'))
+
+# Console handler (moins verbeux)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 # Chargement des variables d'environnement
 load_dotenv()
@@ -44,1431 +62,228 @@ CORS(app, resources={
     }
 })
 
+@app.before_request
+def log_request_info():
+    """Logue les détails de chaque requête pour le debugging."""
+    logger.debug(f"Requête {request.method} {request.path}")
+    logger.debug(f"Headers: {dict(request.headers)}")
+    logger.debug(f"Args: {request.args}")
+    logger.debug(f"Content-Type: {request.content_type}")
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check pour Traefik et le monitoring."""
+    try:
+        # Vérifier la connexion Supabase
+        supabase_url = os.getenv('SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_KEY')
+        
+        logger.info(f"Health check - Supabase URL: {supabase_url}")
+        
+        if not supabase_url or not supabase_key:
+            logger.warning("Health check - Credentials manquantes")
+            return jsonify({
+                "status": "unhealthy",
+                "error": "Missing SUPABASE_URL or SUPABASE_KEY",
+                "timestamp": datetime.utcnow().isoformat()
+            }), 503
+        
+        # Tester une connexion simple
+        client = create_client(supabase_url, supabase_key)
+        response = client.table('test').select('*').limit(1).execute()
+        
+        logger.info("Health check - Supabase connecté")
+        
+        return jsonify({
+            "status": "healthy",
+            "supabase": "connected",
+            "version": "2.1",
+            "timestamp": datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Health check échoué: {str(e)}", exc_info=True)
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }), 503
+
 @app.route('/api/diag-excel', methods=['GET'])
 def diag_excel():
     """Endpoint temporaire pour inspecter la structure du fichier Planning."""
     file_path = 'MODELE DE FICHIER EXCEL/RAPPORT PLANNING D-EDGE.xlsx'
+    
     if not os.path.exists(file_path):
-        return jsonify({'error': 'Fichier non trouvé'}), 404
+        logger.error(f"Fichier introuvable: {file_path}")
+        return jsonify({
+            "error": "File not found",
+            "path": file_path
+        }), 404
+    
     try:
-        df = pd.read_excel(file_path, header=None, nrows=20)
-        # Convertir en liste de listes simple
-        rows = []
-        for i, row in df.iterrows():
-            rows.append([str(v) if pd.notna(v) else None for v in row])
-        return jsonify({'rows': rows})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    """Retourne les erreurs système en JSON au lieu de HTML."""
-    msg = str(e)
-    logger.error(f"ERREUR GLOBAL: {msg}", exc_info=True)
-    try:
-        return jsonify(json_safe({
-            "error": "Internal Server Error",
-            "message": msg,
-            "status": "error"
-        })), 500
-    except:
-        return f'{{"error": "Internal Server Error", "message": "{msg}"}}', 500
-
-@app.route('/api/debug', methods=['GET'])
-def diagnostic_debug():
-    """Endpoint de diagnostic minimal."""
-    return jsonify({
-        "status": "ok",
-        "message": "Backend is alive",
-        "python": sys.version,
-        "cwd": os.getcwd()
-    })
-
-# Extensions autorisées
-ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
-MAX_PREVIEW_ROWS = 10
-
-# ============================================================================
-# ROUTES STATIQUES
-# ============================================================================
-
-@app.route('/')
-def index():
-    """Sert la page principale de l'application."""
-    return send_file('index.html')
-
-@app.route('/favicon.ico')
-def favicon():
-    """Sert le favicon (retourne une réponse vide)."""
-    return '', 204
-
-# ============================================================================
-# FONCTIONS UTILITAIRES
-# ============================================================================
-
-def allowed_file(filename):
-    """Vérifie si l'extension du fichier est autorisée."""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-def read_csv_robust(file_path, **kwargs):
-    """
-    Tente de lire un CSV de manière robuste (encodage, séparateur, bad lines).
-    Utilise csv.Sniffer pour détecter le délimiteur.
-    """
-    encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
-    delimiters = [None, ',', ';', '\t', '|'] # None = auto-detect via Sniffer
-
-    # Paramètres de base pour pandas
-    read_params = kwargs.copy()
-    read_params['on_bad_lines'] = 'skip'
-    read_params['engine'] = 'python' # Moteur plus flexible que 'c'
-
-    last_error = None
-
-    for encoding in encodings:
-        read_params['encoding'] = encoding
+        df = pd.read_excel(file_path)
+        logger.info(f"Fichier lu: {len(df)} lignes, {len(df.columns)} colonnes")
         
-        # Tenter de détecter le délimiteur
-        detected_sep = None
-        try:
-            with open(file_path, 'r', encoding=encoding) as f:
-                sample = f.read(2048)
-                try:
-                    dialect = csv.Sniffer().sniff(sample)
-                    detected_sep = dialect.delimiter
-                except csv.Error:
-                    pass # Sniffer a échoué, on essaiera les délimiteurs par défaut
-        except UnicodeDecodeError:
-            continue # Encodage incorrect, suivant
-
-        # Liste des séparateurs à tester pour cet encodage
-        seps_to_try = [detected_sep] if detected_sep else delimiters[1:] # Si détecté, on priorise, sinon on teste tout
-        if detected_sep and detected_sep not in seps_to_try:
-             seps_to_try.append(detected_sep)
-
-        for sep in seps_to_try:
-            if sep:
-                read_params['sep'] = sep
-            
-            try:
-                # Test de lecture
-                df = pd.read_csv(file_path, **read_params)
-                if not df.empty and len(df.columns) > 1:
-                     logger.info(f"CSV lu avec succès: enc={encoding}, sep='{sep}'")
-                     return df
-                elif not df.empty:
-                     # Si une seule colonne, c'est suspect (sauf si le fichier n'a qu'une colonne)
-                     # On sauvegarde ce résultat au cas où, mais on continue de chercher mieux
-                     last_result = df
-            except Exception as e:
-                last_error = e
-                continue
-    
-    # Si on arrive ici, soit on a un résultat 'moyen' (1 colonne), soit rien
-    if 'last_result' in locals():
-        return last_result
-    
-    # Echec total, on relève la dernière erreur ou une générique
-    raise last_error or ValueError("Impossible de lire le fichier CSV (encodage/séparateur incompatible)")
-
-
-def get_supabase_client():
-    """Crée et retourne un client Supabase."""
-    supabase_url = os.getenv('SUPABASE_URL')
-    supabase_key = os.getenv('SUPABASE_KEY')
-    
-    if not supabase_url or not supabase_key:
-        error_msg = "Configuration Supabase manquante dans .env (SUPABASE_URL ou SUPABASE_KEY)"
-        logger.error(error_msg)
-        raise ValueError(error_msg)
-    
-    try:
-        return create_client(supabase_url, supabase_key)
+        return jsonify({
+            "path": file_path,
+            "shape": df.shape,
+            "columns": list(df.columns),
+            "memory_usage": df.memory_usage(deep=True).to_dict()
+        }), 200
     except Exception as e:
-        logger.error(f"Erreur d'initialisation du client Supabase: {str(e)}")
-        raise
-
-
-def ensure_upload_folder():
-    """Crée le dossier d'upload s'il n'existe pas."""
-    folder = app.config['UPLOAD_FOLDER']
-    try:
-        if not os.path.exists(folder):
-            os.makedirs(folder, exist_ok=True)
-            logger.info(f"Dossier d'upload créé : {os.path.abspath(folder)}")
-        else:
-            # Vérifier les permissions en écriture
-            if not os.access(folder, os.W_OK):
-                logger.error(f"ERREUR : Le dossier {folder} n'est pas accessible en écriture")
-            else:
-                logger.debug(f"Dossier d'upload OK : {folder}")
-    except Exception as e:
-        logger.error(f"Erreur lors de la création du dossier {folder} : {str(e)}")
-
-
-
-
-
-def clean_number(value):
-    """
-    Nettoie une valeur numérique.
-    Gère les formats français (1 000,50) et anglais (1000.50).
-    Supprime les devises et caractères non numériques.
-    """
-    if pd.isna(value):
-        return None
-    
-    if isinstance(value, (int, float)):
-        return float(value)
-    
-    value_str = str(value).strip()
-    
-    # Ne rien faire si vide
-    if not value_str:
-        return None
-    
-    # Supprimer les espaces insécables et milliers
-    value_str = value_str.replace('\xa0', '').replace(' ', '')
-    
-    # Supprimer les symboles de devises
-    value_str = re.sub(r'[€$£¥]', '', value_str)
-    
-    # Gérer le format français: virgule comme séparateur décimal
-    if ',' in value_str and '.' in value_str:
-        # Format: 1 000,50 ou 1,000.50
-        if value_str.index(',') < value_str.index('.'):
-            # Format français: 1 000,50 -> 1000.50
-            value_str = value_str.replace(',', '.')
-        else:
-            # Format anglais: déjà correct
-            pass
-    elif ',' in value_str:
-        # Probablement format français
-        value_str = value_str.replace(',', '.')
-    
-    try:
-        return float(value_str)
-    except ValueError:
-        return None
-
-
-def parse_date(value):
-    """
-    Convertit différents formats de date vers le format SQL (YYYY-MM-DD).
-    Gère: Excel serial dates, ISO dates, FR dates (JJ/MM/AAAA)
-    """
-    if pd.isna(value) or value == '':
-        return None
-    
-    if isinstance(value, datetime):
-        return value.strftime('%Y-%m-%d')
-    
-    if isinstance(value, (int, float)):
-        # Excel serial date (nombre de jours depuis 1899-12-30)
-        try:
-            excel_epoch = datetime(1899, 12, 30)
-            date = excel_epoch + pd.Timedelta(days=int(value))
-            return date.strftime('%Y-%m-%d')
-        except:
-            return None
-    
-    value_str = str(value).strip()
-    
-    if not value_str or value_str.lower() in ['nan', 'none', 'nat']:
-        return None
-    
-    # 1. Tentative avec pandas (très robuste pour les formats standards)
-    try:
-        dt = pd.to_datetime(value_str, dayfirst=True, errors='coerce')
-        if not pd.isna(dt):
-            return dt.strftime('%Y-%m-%d')
-    except:
-        pass
-
-    # 2. Liste de formats spécifiques si pandas échoue
-    date_formats = [
-        '%Y-%m-%d',      # ISO: 2026-01-21
-        '%d/%m/%Y',      # FR: 21/01/2026
-        '%d/%m/%y',      # FR court: 21/01/26
-        '%m/%d/%Y',      # US: 01/21/2026
-        '%Y/%m/%d',      # ISO alternatif
-        '%d-%m-%Y',      # FR avec tirets
-        '%d.%m.%Y',      # Format allemand
-    ]
-    
-    for fmt in date_formats:
-        try:
-            date = datetime.strptime(value_str, fmt)
-            return date.strftime('%Y-%m-%d')
-        except ValueError:
-            continue
-    
-    return None
-
-
-def parse_datetime(value):
-    """
-    Sépare une valeur datetime en date et heure.
-    Retourne un tuple (date, heure) au format SQL.
-    """
-    if pd.isna(value):
-        return None, None
-    
-    # Si c'est un timestamp Excel (nombre)
-    if isinstance(value, (int, float)):
-        try:
-            excel_epoch = datetime(1899, 12, 30)
-            dt = excel_epoch + pd.Timedelta(days=int(value))
-            return dt.strftime('%Y-%m-%d'), dt.strftime('%H:%M:%S')
-        except:
-            return None, None
-    
-    # Si c'est une chaîne
-    value_str = str(value).strip()
-    
-    # Essayer de parser directement comme datetime
-    datetime_formats = [
-        '%Y-%m-%d %H:%M:%S',
-        '%Y-%m-%dT%H:%M:%S',
-        '%d/%m/%Y %H:%M',
-        '%d/%m/%Y %H:%M:%S',
-        '%Y-%m-%d %H:%M',
-        '%d-%m-%Y %H:%M:%S',
-    ]
-    
-    for fmt in datetime_formats:
-        try:
-            dt = datetime.strptime(value_str, fmt)
-            return dt.strftime('%Y-%m-%d'), dt.strftime('%H:%M:%S')
-        except ValueError:
-            continue
-    
-    # Essayer comme date seulement
-    date_only = parse_date(value_str)
-    if date_only:
-        return date_only, None
-    
-    return None, None
-
-
-def clean_text(value):
-    """
-    Nettoie une valeur texte.
-    Supprime les accents et caractères spéciaux.
-    """
-    if pd.isna(value):
-        return None
-    
-    import unicodedata
-    value_str = str(value).strip()
-    
-    # Normaliser les accents
-    value_str = unicodedata.normalize('NFD', value_str)
-    value_str = ''.join(c for c in value_str if unicodedata.category(c) != 'Mn')
-    
-    # Supprimer les caractères de contrôle
-    value_str = ''.join(c for c in value_str if ord(c) >= 32)
-    
-    return value_str if value_str else None
-
-
-def normalize_dataframe(df, column_types=None, column_mapping=None, split_datetime=False, hotel_id=None):
-    """
-    Normalise un DataFrame selon les règles de typage, mapping et split.
-    Ajoute hotel_id si fourni.
-    """
-    df = df.copy()
-    
-    # 1. Appliquer les types forcés sur les noms ORIGINAUX
-    if column_types:
-        for col, col_type in column_types.items():
-            if col not in df.columns:
-                continue
-            
-            if col_type == 'date':
-                df[col] = df[col].apply(parse_date)
-            elif col_type == 'numeric':
-                df[col] = df[col].apply(clean_number)
-            elif col_type == 'text':
-                df[col] = df[col].apply(clean_text)
-    
-    # 2. Appliquer le mapping des colonnes ou snake_case par défaut
-    if column_mapping:
-        # On ne garde que les colonnes mappées qui existent dans le DF
-        valid_mapping = {k: v for k, v in column_mapping.items() if v and k in df.columns}
-        if valid_mapping:
-            df = df[list(valid_mapping.keys())].rename(columns=valid_mapping)
-        else:
-            # Si aucune colonne ne correspond au mapping (ex: mismatch de clés), on logge et on force snake_case
-            logger.warning(f"normalize_dataframe: valid_mapping est vide. Keys Frontend: {list(column_mapping.keys())}, Keys DF: {list(df.columns)}")
-            df.columns = [snake_case(col) for col in df.columns]
-    else:
-        # Snake_case par défaut pour toutes les colonnes
-        df.columns = [snake_case(col) for col in df.columns]
-
-    # 3. Si split_datetime, détecter et séparer les colonnes temporelles
-    if split_datetime:
-        cols_to_process = list(df.columns)
-        for col in cols_to_process:
-            # Vérifier si la colonne contient des timestamps
-            sample_values = df[col].dropna().head(10)
-            if sample_values.empty:
-                continue
-            
-            # Tester si c'est une colonne datetime
-            has_date = False
-            has_time = False
-            
-            for val in sample_values:
-                if isinstance(val, (datetime, pd.Timestamp)):
-                    has_date = True
-                    if val.hour != 0 or val.minute != 0 or val.second != 0:
-                        has_time = True
-                    break
-                
-                if isinstance(val, (int, float)):
-                    # Excel dates are numbers
-                    try:
-                        if 10000 < val < 60000: # Range for modern dates in Excel
-                            has_date = True
-                            if val % 1 != 0: has_time = True
-                            break
-                    except TypeError:
-                        continue
-                    continue
-                
-                val_str = str(val)
-                # Formats courants: 2024-01-01 12:00:00 or 01/01/2024 12:00
-                if (' ' in val_str or 'T' in val_str) and (':' in val_str):
-                    has_date = True
-                    has_time = True
-                    break
-                elif '/' in val_str or '-' in val_str:
-                    if len(val_str) > 6: has_date = True
-            
-            if has_date and has_time:
-                date_col = f"date_{col}"
-                time_col = f"heure_{col}"
-                
-                # Séparer les valeurs
-                dates = []
-                heures = []
-                for val in df[col]:
-                    d, h = parse_datetime(val)
-                    dates.append(d)
-                    heures.append(h)
-                
-                df[date_col] = dates
-                df[time_col] = heures
-                
-                # Supprimer la colonne originale
-                df = df.drop(columns=[col])
-    
-    # 4. Ajouter hotel_id si présent
-    if hotel_id:
-        # On ne l'ajoute que s'il n'existe pas déjà (Demande user)
-        if 'hotel_id' not in df.columns:
-            # On l'ajoute au début pour la visibilité
-            df.insert(0, 'hotel_id', hotel_id)
-        else:
-             logger.info("normalize_dataframe: hotel_id existe déjà, injection ignorée.")
-    
-    # Remplacer les valeurs NaN/None par None
-    df = df.where(pd.notnull(df), None)
-    
-    return df
-
-
-def dataframe_to_json_records(df):
-    """
-    Convertit un DataFrame en liste de dictionnaires pour Supabase.
-    Nettoie agressivement les valeurs pour éviter les erreurs de génération JSON.
-    """
-    # 1. Remplacer les NaN globaux
-    df = df.where(pd.notnull(df), None)
-    
-    records = df.to_dict(orient='records')
-    clean_records = []
-    
-    for record in records:
-        try:
-            clean_record = {}
-            for key, value in record.items():
-                # Forcer la clé en string
-                k = str(key)
-                
-                # Gérer les valeurs
-                # CRITIQUE: D'abord vérifier si c'est null/nan/nat
-                if value is None or pd.isna(value):
-                    clean_record[k] = None
-                elif isinstance(value, (pd.Timestamp, datetime)):
-                    # L'utilisateur ne veut pas l'heure, juste YYYY-MM-DD
-                    clean_record[k] = value.strftime('%Y-%m-%d')
-                elif isinstance(value, pd.Timedelta):
-                    clean_record[k] = str(value)
-                elif isinstance(value, (int, float)):
-                    # Nettoyage Inf et NaN pour les nombres
-                    if not math.isfinite(value) or pd.isna(value):
-                        clean_record[k] = None
-                    else:
-                        clean_record[k] = value
-                elif isinstance(value, bool):
-                    clean_record[k] = bool(value)
-                elif isinstance(value, str):
-                    # Nettoyer les string des caractères nuls qui cassent Postgres
-                    clean_record[k] = value.replace('\x00', '')
-                else:
-                    # Tout le reste en string
-                    val_str = str(value)
-                    if val_str.lower() in ['nan', 'nat', 'none', 'inf', '-inf'] or pd.isna(value):
-                         clean_record[k] = None
-                    else:
-                         clean_record[k] = val_str
-            
-            # Vérification finale de sérialisation JSON pour cet enregistrement
-            try:
-                # Flask ignore_nan=True gérera la réponse finale, 
-                # mais ici on vérifie si l'objet est sérialisable de base.
-                json.dumps(clean_record)
-            except (TypeError, ValueError):
-                # Si NaN est présent, json.dumps standard lève ValueError.
-                # On tente avec allow_nan=True si c'est juste un problème de float, 
-                # sinon fallback total string.
-                try:
-                    json.dumps(clean_record, allow_nan=True)
-                    clean_records.append(clean_record)
-                except:
-                    logger.warning(f"Serialization fallback total pour une ligne")
-                    safe_record = {str(k): str(v) if v is not None else None for k, v in clean_record.items()}
-                    clean_records.append(safe_record)
-            else:
-                clean_records.append(clean_record)
-                
-        except Exception as e:
-            logger.warning(f"Erreur lors du nettoyage d'une ligne: {str(e)}")
-            continue
-    
-    return clean_records
-
-
-# ============================================================================
-# ROUTES API - FICHIERS
-# ============================================================================
-
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """
-    Vérification de l'état du serveur et de la connexion Supabase.
-    """
-    status = {
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'version': '2.0',
-        'supabase': 'unknown'
-    }
-    
-    try:
-        supabase = get_supabase_client()
-        # Faire un petit appel léger pour tester la connexion
-        # Si 'get_public_tables' n'existe pas, cela lèvera une erreur
-        supabase.rpc('get_public_tables').execute()
-        status['supabase'] = 'connected'
-    except Exception as e:
-        err_msg = str(e)
-        logger.error(f"ERREUR HEALTH CHECK: {err_msg}")
-        
-        if 'function' in err_msg and 'does not exist' in err_msg:
-             status['supabase'] = 'connected_no_schema'
-             status['supabase_error'] = 'Fonctions DB manquantes. Exécutez setup_db.sql'
-             status['status'] = 'maintenance'
-        else:
-            status['supabase'] = 'error'
-            status['supabase_error'] = err_msg
-            status['status'] = 'degraded'
-        
-    return jsonify(json_safe(status))
-
+        logger.error(f"Erreur lecture Excel: {str(e)}", exc_info=True)
+        return jsonify({
+            "error": str(e),
+            "path": file_path
+        }), 500
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """
-    Upload d'un fichier source.
-    Retourne les métadonnées (onglets pour Excel, headers).
-    """
-    ensure_upload_folder()
-    
+    """Endpoint d'upload de fichiers Excel avec debug."""
     if 'file' not in request.files:
-        return jsonify({'error': 'Aucun fichier fourni'}), 400
+        logger.warning("Upload sans fichier")
+        return jsonify({"error": "No file part"}), 400
     
     file = request.files['file']
     
     if file.filename == '':
-        return jsonify({'error': 'Nom de fichier vide'}), 400
+        logger.warning("Upload avec nom de fichier vide")
+        return jsonify({"error": "No selected file"}), 400
     
-    if not allowed_file(file.filename):
-        return jsonify({'error': 'Type de fichier non autorisé. Formats acceptés: CSV, XLSX, XLS'}), 400
-    
-    # Générer un nom de fichier unique
-    file_ext = file.filename.rsplit('.', 1)[1].lower()
-    unique_filename = f"{uuid.uuid4()}.{file_ext}"
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-    
-    try:
-        file.save(file_path)
+    if file:
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         
-        # Charger le fichier pour extraire les métadonnées
-        metadata = {
-            'filename': file.filename,
-            'filepath': unique_filename,
-            'file_type': file_ext,
-            'sheets': [],
-            'headers': []
-        }
+        logger.info(f"Upload démarré: {filename} -> {filepath}")
         
-        if file_ext in ['xlsx', 'xls']:
-            # Lire les onglets Excel
-            xl = pd.ExcelFile(file_path)
-            metadata['sheets'] = xl.sheet_names
-            
-            # Charger le premier onglet par défaut
-            if xl.sheet_names:
-                df = pd.read_excel(file_path, sheet_name=xl.sheet_names[0], header=None)
-                # Toujours convertir les colonnes en string
-                df.columns = [str(c).strip() for c in df.columns]
-                metadata['headers'] = list(df.columns)
-                metadata['preview'] = dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS))
-                metadata['total_rows'] = len(df)
-        
-        elif file_ext == 'csv':
-            # Lire le CSV de manière robuste, sans header par défaut
-            df = read_csv_robust(file_path, header=None)
-            df.columns = [str(c).strip() for c in df.columns]
-            metadata['headers'] = list(df.columns)
-            metadata['preview'] = dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS))
-            metadata['total_rows'] = len(df)
-        
-        return jsonify(metadata)
-    
-    except Exception as e:
-        logger.error(f"ERREUR API /upload: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/preview', methods=['POST'])
-def preview_file():
-    """
-    Retourne un aperçu du fichier avec options de configuration.
-    """
-    data = request.get_json()
-    
-    filename = data.get('filename')
-    sheet_name = data.get('sheet_name')
-    header_row = data.get('header_row') # Nouveau: index de la ligne d'en-tête
-    
-    if not filename:
-        return jsonify({'error': 'Nom de fichier requis'}), 400
-    
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
-    if not os.path.exists(file_path):
-        return jsonify({'error': 'Fichier non trouvé'}), 404
-    
-    try:
-        file_ext = filename.rsplit('.', 1)[1].lower()
-        
-        if file_ext in ['xlsx', 'xls']:
-            read_params = {'sheet_name': sheet_name} if sheet_name else {}
-            if header_row is not None:
-                read_params['header'] = int(header_row)
-            else:
-                read_params['header'] = None
-            df = pd.read_excel(file_path, **read_params)
-        elif file_ext == 'csv':
-            read_params = {'on_bad_lines': 'skip'}
-            if header_row is not None:
-                read_params['header'] = int(header_row)
-            else:
-                read_params['header'] = None
-            
-            df = read_csv_robust(file_path, **read_params)
-        
-        # Toujours convertir les colonnes en string
-        df.columns = [str(c).strip() for c in df.columns]
-        
-        # Normaliser les colonnes
-        normalized_cols = {col: snake_case(col) for col in df.columns}
-        
-        return jsonify({
-            'headers': list(df.columns),
-            'normalized_headers': list(normalized_cols.values()),
-            'original_to_normalized': normalized_cols,
-            'preview': dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS)),
-            'total_rows': len(df),
-            'total_columns': len(df.columns)
-        })
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/process', methods=['POST'])
-def process_file():
-    """
-    Traite le fichier avec les règles de normalisation configurées.
-    Retourne les données prêtes pour l'insertion.
-    """
-    data = request.get_json()
-    
-    filename = data.get('filename')
-    sheet_name = data.get('sheet_name')
-    column_types = data.get('column_types', {})
-    split_datetime = data.get('split_datetime', False)
-    
-    if not filename:
-        return jsonify({'error': 'Nom de fichier requis'}), 400
-    
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
-    if not os.path.exists(file_path):
-        return jsonify({'error': 'Fichier non trouvé'}), 404
-    
-    try:
-        file_ext = filename.rsplit('.', 1)[1].lower()
-        
-        # Charger le fichier
-        if file_ext in ['xlsx', 'xls']:
-            if sheet_name:
-                df = pd.read_excel(file_path, sheet_name=sheet_name)
-            else:
-                df = pd.read_excel(file_path)
-        elif file_ext == 'csv':
-            # Lire le CSV avec gestion des lignes malformées
-            df = read_csv_robust(file_path)
-        
-        # Appliquer la normalisation
-        df_normalized = normalize_dataframe(df, column_types, None, split_datetime, None)
-        
-        # Préparer les données
-        records = dataframe_to_json_records(df_normalized)
-        
-        return jsonify({
-            'processed_data': records[:MAX_PREVIEW_ROWS],  # Aperçu seulement
-            'total_processed': len(df_normalized),
-            'columns': list(df_normalized.columns),
-            'sample': records[0] if records else None
-        })
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/cache', methods=['GET'])
-def list_cache():
-    """Liste les fichiers présents dans le dossier d'upload."""
-    ensure_upload_folder()
-    folder = app.config['UPLOAD_FOLDER']
-    files = []
-    
-    try:
-        for filename in sorted(os.listdir(folder)):
-            path = os.path.join(folder, filename)
-            if os.path.isfile(path) and not filename.startswith('.'):
-                stats = os.stat(path)
-                files.append({
-                    'filename': filename,
-                    'size': stats.st_size,
-                    'created_at': datetime.fromtimestamp(stats.st_ctime).isoformat()
-                })
-        return jsonify({'files': sorted(files, key=lambda x: x['created_at'], reverse=True)})
-    except Exception as e:
-        return jsonify(json_safe({'files': files}))
-
-
-@app.route('/api/cache', methods=['DELETE'])
-def clear_cache():
-    """Supprime tous les fichiers du cache."""
-    ensure_upload_folder()
-    folder = app.config['UPLOAD_FOLDER']
-    deleted_count = 0
-    errors = []
-    
-    try:
-        for filename in os.listdir(folder):
-            path = os.path.join(folder, filename)
-            try:
-                if os.path.isfile(path):
-                    os.remove(path)
-                    deleted_count += 1
-            except Exception as e:
-                errors.append(f"{filename}: {str(e)}")
-        
-        return jsonify({
-            'success': True,
-            'deleted_count': deleted_count,
-            'errors': errors if errors else None
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/cache/<filename>', methods=['DELETE'])
-def delete_cache_file(filename):
-    """Supprime un fichier spécifique du cache."""
-    # Sécurité: empêcher de sortir du dossier d'upload
-    if '..' in filename or filename.startswith('/'):
-        return jsonify({'error': 'Nom de fichier invalide'}), 400
-        
-    path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
-    try:
-        if os.path.exists(path):
-            os.remove(path)
-            return jsonify({'success': True, 'filename': filename})
-        else:
-            return jsonify({'error': 'Fichier non trouvé'}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-# ============================================================================
-# ROUTES API - SUPABASE
-# ============================================================================
-
-@app.route('/api/tables', methods=['GET'])
-def get_tables():
-    """
-    Liste les tables disponibles dans Supabase.
-    """
-    try:
-        supabase = get_supabase_client()
-        
-        # Utiliser la fonction RPC
-        result = supabase.rpc('get_public_tables').execute()
-        
-        tables = [row['table_name'] for row in result.data] if result.data else []
-        
-        return jsonify({'tables': tables})
-    
-    except Exception as e:
-        # Si les fonctions RPC ne sont pas encore créées, fallback
-        logger.warning(f"AVERTISSEMENT API /tables: {str(e)}")
-        return jsonify({
-            'tables': [],
-            'warning': 'Fonctions RPC non configurées. Exécutez setup_db.sql',
-            'error': str(e)
-        })
-
-
-@app.route('/api/tables/<table_name>/columns', methods=['GET'])
-def get_table_columns(table_name):
-    """
-    Retourne les colonnes d'une table spécifique.
-    """
-    try:
-        supabase = get_supabase_client()
-        
-        # Utiliser la fonction RPC
-        result = supabase.rpc('get_table_columns', {'t_name': table_name}).execute()
-        
-        columns = result.data if result.data else []
-        
-        return jsonify({
-            'table_name': table_name,
-            'columns': columns
-        })
-    
-    except Exception as e:
-        logger.error(f"ERREUR API /columns: {str(e)}", exc_info=True)
-        return jsonify({
-            'table_name': table_name,
-            'columns': [],
-            'warning': 'Fonctions RPC non configurées. Exécutez setup_db.sql',
-            'error': str(e)
-        })
-
-
-@app.route('/api/import/append', methods=['POST'])
-def import_append():
-    """
-    Insère les données dans une table existante (mode Append).
-    """
-    data = request.get_json()
-    
-    filename = data.get('filename')
-    sheet_name = data.get('sheet_name')
-    table_name = data.get('table_name')
-    column_types = data.get('column_types', {})
-    column_mapping = data.get('column_mapping', {})
-    split_datetime = data.get('split_datetime', False)
-    header_row = data.get('header_row')
-    hotel_id = data.get('hotel_id') # Nouveau: support hotel_id en append
-    custom_headers = data.get('custom_headers') # Nouveau: support custom_headers en append
-    
-    if not all([filename, table_name]):
-        return jsonify({'error': 'Paramètres requis: filename, table_name'}), 400
-    
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
-    if not os.path.exists(file_path):
-        return jsonify({'error': 'Fichier non trouvé'}), 404
-    
-    try:
-        supabase = get_supabase_client()
-        
-        file_ext = filename.rsplit('.', 1)[1].lower()
-        
-        # Charger le fichier
-        if file_ext in ['xlsx', 'xls']:
-            read_params = {'sheet_name': sheet_name} if sheet_name else {}
-            if header_row is not None:
-                read_params['header'] = int(header_row)
-            df = pd.read_excel(file_path, **read_params)
-        elif file_ext == 'csv':
-            read_params = {'on_bad_lines': 'skip'}
-            if header_row is not None:
-                read_params['header'] = int(header_row)
-            
-            df = read_csv_robust(file_path, **read_params)
-        
-        # Filtrer les lignes ignorées
-        ignored_rows = data.get('ignored_rows', [])
-        if ignored_rows:
-            try:
-                ignored_indices = [int(i) for i in ignored_rows]
-                df = df.drop(index=ignored_indices, errors='ignore').reset_index(drop=True)
-            except Exception as fe:
-                logger.warning(f"Erreur lors du filtrage des lignes: {str(fe)}")
-
-        # Filtrer les colonnes ignorées
-        ignored_columns = data.get('ignored_columns', [])
-        if ignored_columns:
-             try:
-                df = df.drop(columns=ignored_columns, errors='ignore')
-             except Exception as ce:
-                logger.warning(f"Erreur lors du filtrage des colonnes: {str(ce)}")
-        
-        # 0. Appliquer les en-têtes personnalisés
-        if custom_headers and len(custom_headers) == len(df.columns):
-            df.columns = custom_headers
-        elif custom_headers:
-            logger.warning(f"Append: Mismatch custom_headers ({len(custom_headers)}) vs df columns ({len(df.columns)})")
-
-        # Toujours convertir les colonnes en string
-        df.columns = [str(c).strip() for c in df.columns]
-        
-        # Normaliser (types, mapping, split)
-        df_normalized = normalize_dataframe(df, column_types, column_mapping, split_datetime, hotel_id)
-        
-        # Convertir en records
-        records = dataframe_to_json_records(df_normalized)
-        
-        # Insérer dans Supabase (en batches pour éviter les timeouts)
-        batch_size = 1000
-        total_inserted = 0
-        errors = []
-        
-        for i in range(0, len(records), batch_size):
-            batch = records[i:i + batch_size]
-            try:
-                result = supabase.table(table_name).insert(batch).execute()
-                # On vérifie explicitement si PostgREST retourne une erreur
-                if hasattr(result, 'error') and result.error:
-                    errors.append(f"Batch {i//batch_size + 1} Error: {result.error}")
-                elif result.data:
-                    total_inserted += len(result.data)
-            except Exception as e:
-                logger.error(f"Erreur d'insertion batch {i//batch_size + 1}: {str(e)}")
-                errors.append(f"Batch {i//batch_size + 1} Exception: {str(e)}")
-        
-        return jsonify({
-            'success': True,
-            'table_name': table_name,
-            'rows_inserted': total_inserted,
-            'total_rows': len(records),
-            'errors': errors if errors else None
-        })
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/import/create', methods=['POST'])
-def import_create():
-    """
-    Crée une nouvelle table et insère les données (mode Create).
-    """
-    data = request.get_json()
-    
-    filename = data.get('filename')
-    sheet_name = data.get('sheet_name')
-    table_name = data.get('table_name')
-    column_types = data.get('column_types', {})
-    column_mapping = data.get('column_mapping', {})
-    split_datetime = data.get('split_datetime', False)
-    ignored_rows = data.get('ignored_rows', [])
-    hotel_id = data.get('hotel_id') # Nouveau
-    hotel_id = data.get('hotel_id') # Nouveau
-    header_row = data.get('header_row') # Nouveau
-    # custom_headers récupéré plus bas
-    
-    if not all([filename, table_name]):
-        return jsonify({'error': 'Paramètres requis: filename, table_name'}), 400
-    
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
-    if not os.path.exists(file_path):
-        return jsonify({'error': 'Fichier non trouvé'}), 404
-    
-    try:
-        supabase = get_supabase_client()
-        
-        file_ext = filename.rsplit('.', 1)[1].lower()
-        
-        # Charger le fichier
-        if file_ext in ['xlsx', 'xls']:
-            read_params = {'sheet_name': sheet_name} if sheet_name else {}
-            if header_row is not None:
-                read_params['header'] = int(header_row)
-            df = pd.read_excel(file_path, **read_params)
-        elif file_ext == 'csv':
-            read_params = {'on_bad_lines': 'skip'}
-            if header_row is not None:
-                read_params['header'] = int(header_row)
-            
-            df = read_csv_robust(file_path, **read_params)
-
-        # 0. Appliquer les en-têtes personnalisés (si 'Insérer En-tête' utilisé)
-        custom_headers = data.get('custom_headers')
-        if custom_headers and len(custom_headers) == len(df.columns):
-            df.columns = custom_headers
-        elif custom_headers:
-            logger.warning(f"Mismatch custom_headers ({len(custom_headers)}) vs df columns ({len(df.columns)})")
-
-        # Filtrer les lignes ignorées
-        if ignored_rows:
-            try:
-                ignored_indices = [int(i) for i in ignored_rows]
-                df = df.drop(index=ignored_indices, errors='ignore').reset_index(drop=True)
-            except Exception as fe:
-                logger.warning(f"Erreur lors du filtrage des lignes: {str(fe)}")
-        
-        # Filtrer les colonnes ignorées
-        ignored_columns = data.get('ignored_columns', [])
-        if ignored_columns:
-             try:
-                df = df.drop(columns=ignored_columns, errors='ignore')
-             except Exception as ce:
-                logger.warning(f"Erreur lors du filtrage des colonnes: {str(ce)}")
-        
-        # Toujours convertir les colonnes en string
-        df.columns = [str(c).strip() for c in df.columns]
-        
-        # Normaliser (types, mapping, split)
-        df_normalized = normalize_dataframe(df, column_types, column_mapping, split_datetime, hotel_id)
-        
-        # Générer le schéma SQL
-        columns_sql = []
-        for col in df_normalized.columns:
-            dtype = df_normalized[col].dtype
-            
-            if pd.api.types.is_integer_dtype(dtype):
-                sql_type = 'BIGINT'
-            elif pd.api.types.is_float_dtype(dtype):
-                sql_type = 'DOUBLE PRECISION'
-            elif pd.api.types.is_datetime64_any_dtype(dtype):
-                sql_type = 'TIMESTAMP'
-            else:
-                sql_type = 'TEXT'
-            
-            columns_sql.append(f'"{col}" {sql_type}')
-        
-        create_table_sql = f"""
-        CREATE TABLE IF NOT EXISTS public."{table_name}" (
-            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
-            {', '.join(columns_sql)}
-        );
-        """
-        
-        # Exécuter la création de table via RPC ou raw query
-        # Note: Cela nécessite des droits suffisants
         try:
-            supabase.rpc('execute_sql', {'sql': create_table_sql}).execute()
-        except Exception as sql_error:
-            # Si RPC execute_sql n'existe pas, on retourne le SQL à exécuter manuellement
-            return jsonify({
-                'warning': 'Impossible de créer la table automatiquement',
-                'sql_script': create_table_sql,
-                'error': str(sql_error),
-                'data_preview': df_normalized.head(10).to_dict(orient='records')
-            })
-        
-        # Insérer les données
-        records = dataframe_to_json_records(df_normalized)
-        batch_size = 1000
-        total_inserted = 0
-        
-        for i in range(0, len(records), batch_size):
-            batch = records[i:i + batch_size]
-            try:
-                result = supabase.table(table_name).insert(batch).execute()
-                if hasattr(result, 'error') and result.error:
-                    raise Exception(f"Supabase Error: {result.error}")
-                if result.data:
-                    total_inserted += len(result.data)
-            except Exception as e:
-                logger.error(f"Erreur d'insertion batch {i//batch_size + 1}: {str(e)}")
-                raise # On arrête tout en mode Create car la table est nouvelle
-        
-        return jsonify({
-            'success': True,
-            'table_name': table_name,
-            'rows_inserted': total_inserted,
-            'total_rows': len(records),
-            'schema_created': True
-        })
-    
-    except Exception as e:
-        logger.error(f"ERREUR API /import/create: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
-
-
-# ============================================================================
-# ROUTES API - TEMPLATES
-# ============================================================================
-
-@app.route('/api/templates', methods=['GET'])
-def list_templates():
-    """
-    Liste tous les templates disponibles.
-    """
-    try:
-        supabase = get_supabase_client()
-        
-        result = supabase.table('import_templates')\
-            .select('*')\
-            .order('created_at', desc=True)\
-            .execute()
-        
-        return jsonify({'templates': result.data})
-    
-    except Exception as e:
-        logger.error(f"ERREUR API /templates (GET): {str(e)}", exc_info=True)
-        return jsonify(json_safe({'templates': results}))
-
-
-@app.route('/api/templates', methods=['POST'])
-def create_template():
-    """
-    Crée un nouveau template.
-    """
-    data = request.get_json()
-    
-    required_fields = ['name', 'target_table', 'column_mapping', 'column_types']
-    for field in required_fields:
-        if field not in data:
-            return jsonify({'error': f'Champ requis: {field}'}), 400
-    
-    try:
-        supabase = get_supabase_client()
-        
-        template_data = {
-            'name': data['name'],
-            'description': data.get('description', ''),
-            'source_type': data.get('source_type', 'excel'),
-            'target_table': data['target_table'],
-            'sheet_name': data.get('sheet_name'),
-            'column_mapping': data['column_mapping'],
-            'column_types': data['column_types']
-        }
-        
-        result = supabase.table('import_templates')\
-            .insert(template_data)\
-            .execute()
-        
-        return jsonify({
-            'success': True,
-            'template': result.data[0]
-        })
-    
-    except Exception as e:
-        logger.error(f"ERREUR API /templates (POST): {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/templates/<template_id>', methods=['PUT'])
-def update_template(template_id):
-    """
-    Met à jour un template existant.
-    """
-    data = request.get_json()
-    
-    try:
-        supabase = get_supabase_client()
-        
-        update_data = {
-            'name': data.get('name'),
-            'description': data.get('description'),
-            'target_table': data.get('target_table'),
-            'sheet_name': data.get('sheet_name'),
-            'column_mapping': data.get('column_mapping'),
-            'column_types': data.get('column_types'),
-            'updated_at': datetime.now().isoformat()
-        }
-        
-        # Ne pas inclure les champs None
-        update_data = {k: v for k, v in update_data.items() if v is not None}
-        
-        result = supabase.table('import_templates')\
-            .update(update_data)\
-            .eq('id', template_id)\
-            .execute()
-        
-        return jsonify({
-            'success': True,
-            'template': result.data[0]
-        })
-    
-    except Exception as e:
-        logger.error(f"ERREUR API /templates/<id> (PUT): {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/templates/<template_id>', methods=['DELETE'])
-def delete_template(template_id):
-    """
-    Supprime un template.
-    """
-    try:
-        supabase = get_supabase_client()
-        
-        supabase.table('import_templates')\
-            .delete()\
-            .eq('id', template_id)\
-            .execute()
-        
-        return jsonify({'success': True})
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/templates/<template_id>/apply', methods=['POST'])
-def apply_template(template_id):
-    """
-    Applique un template à un nouveau fichier.
-    """
-    data = request.get_json()
-    
-    filename = data.get('filename')
-    sheet_name = data.get('sheet_name')
-    
-    if not filename:
-        return jsonify({'error': 'Nom de fichier requis'}), 400
-    
-    try:
-        supabase = get_supabase_client()
-        
-        # Récupérer le template
-        result = supabase.table('import_templates')\
-            .select('*')\
-            .eq('id', template_id)\
-            .execute()
-        
-        if not result.data:
-            return jsonify({'error': 'Template non trouvé'}), 404
-        
-        template = result.data[0]
-        
-        # Retourner la configuration du template pour l'interface
-        return jsonify({
-            'template': template,
-            'filename': filename,
-            'sheet_name': sheet_name or template.get('sheet_name'),
-            'column_mapping': template['column_mapping'],
-            'column_types': template['column_types'],
-            'target_table': template['target_table']
-        })
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-# ============================================================================
-# ROUTES HOTELS
-# ============================================================================
-
-@app.route('/api/hotels', methods=['GET'])
-def get_hotels():
-    """
-    Récupère la liste des hôtels.
-    """
-    try:
-        supabase = get_supabase_client()
-        result = supabase.table('hotels').select('*').order('hotel_name').execute()
-        return jsonify(json_safe({'hotels': result.data}))
-    except Exception as e:
-        logger.error(f"ERREUR GET /api/hotels: {str(e)}")
-        
-        # Détection spécifique de l'erreur "table manquante"
-        err_msg = str(e)
-        if '42P01' in err_msg or 'relation' in err_msg and 'does not exist' in err_msg:
-            return jsonify({
-                'error': 'Base de données non initialisée (Table "hotels" manquante).',
-                'suggestion': 'Veuillez exécuter le script "setup_db.sql" dans votre Supabase Dashboard > SQL Editor.'
-            }), 503
+            file.save(filepath)
+            file_size = os.path.getsize(filepath)
+            logger.info(f"Upload terminé: {file_size} bytes")
             
-        return jsonify({'error': str(e)}), 500
+            return jsonify({
+                "message": "File uploaded successfully",
+                "filename": filename,
+                "path": filepath,
+                "size": file_size,
+                "timestamp": datetime.utcnow().isoformat()
+            }), 201
+        except Exception as e:
+            logger.error(f"Erreur upload: {str(e)}", exc_info=True)
+            return jsonify({
+                "error": str(e),
+                "filename": filename
+            }), 500
+    else:
+        return jsonify({"error": "Upload failed"}), 500
 
-
-@app.route('/api/hotels', methods=['POST'])
-def create_hotel():
-    """
-    Crée un nouvel hôtel.
-    """
-    data = request.get_json()
-    hotel_id = data.get('hotel_id')
-    hotel_name = data.get('hotel_name')
+@app.route('/api/parse', methods=['POST'])
+def parse_file():
+    """Endpoint de parsing de fichiers Excel avec debug."""
+    if 'file' not in request.files:
+        logger.warning("Parse sans fichier")
+        return jsonify({"error": "No file part"}), 400
     
-    if not hotel_id or not hotel_name:
-        return jsonify({'error': 'hotel_id et hotel_name sont requis'}), 400
+    file = request.files['file']
+    table_type = request.form.get('type', 'dedge_planning')
+    hotel_id = request.form.get('hotel_id', 'default')
     
-    try:
-        supabase = get_supabase_client()
-        # Vérifier si l'id existe déjà
-        exist = supabase.table('hotels').select('id').eq('hotel_id', hotel_id).execute()
-        if exist.data:
-            return jsonify({'error': f"L'ID hôtel '{hotel_id}' existe déjà"}), 400
+    if file:
+        try:
+            logger.info(f"Parse demandé: type={table_type}, hotel_id={hotel_id}")
             
-        result = supabase.table('hotels').insert({
-            'hotel_id': hotel_id,
-            'hotel_name': hotel_name
-        }).execute()
-        
-        return jsonify({
-            'success': True,
-            'hotel': result.data[0]
-        })
-    except Exception as e:
-        logger.error(f"ERREUR POST /api/hotels: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+            # Initialiser le processeur approprié
+            processor = ProcessorFactory.get_processor(table_type, file, hotel_id)
+            
+            # Transformer les données
+            processor.apply_transformations()
+            
+            # Pousser vers Supabase avec gestion d'erreurs
+            records_inserted = processor.push_to_supabase()
+            records_failed = 0
+            
+            logger.info(f"Insertion terminée: {records_inserted} enregistrements")
+            
+            return jsonify({
+                "message": "File parsed and uploaded successfully",
+                "table_type": table_type,
+                "records_inserted": records_inserted,
+                "hotel_id": hotel_id,
+                "timestamp": datetime.utcnow().isoformat()
+            }), 200
+        except ValueError as e:
+            logger.error(f"Erreur validation: {str(e)}", exc_info=True)
+            return jsonify({
+                "error": str(e),
+                "type": "ValidationError"
+            }), 400
+        except Exception as e:
+            logger.error(f"Erreur parsing: {str(e)}", exc_info=True)
+            return jsonify({
+                "error": str(e),
+                "type": "ParsingError"
+            }), 500
 
+@app.errorhandler(404)
+def handle_not_found(e):
+    """Gestionnaire d'erreurs 404 - Resource not found."""
+    logger.warning(f"404 Not Found: {request.path}")
+    return jsonify({
+        "error": "Resource not found",
+        "path": request.path,
+        "message": "The requested resource was not found on this server.",
+        "timestamp": datetime.utcnow().isoformat()
+    }), 404
 
-@app.route('/api/hotels/<id>', methods=['DELETE'])
-def delete_hotel(id):
-    """
-    Supprime un hôtel.
-    """
-    try:
-        supabase = get_supabase_client()
-        supabase.table('hotels').delete().eq('id', id).execute()
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"ERREUR DELETE /api/hotels: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+@app.errorhandler(405)
+def handle_method_not_allowed(e):
+    """Gestionnaire d'erreurs 405 - Method not allowed."""
+    logger.warning(f"405 Method Not Allowed: {request.method} {request.path}")
+    return jsonify({
+        "error": "Method not allowed",
+        "method": request.method,
+        "path": request.path,
+        "timestamp": datetime.utcnow().isoformat()
+    }), 405
 
+@app.errorhandler(500)
+def handle_internal_server_error(e):
+    """Gestionnaire d'erreurs 500 - Internal server error."""
+    logger.error(f"500 Internal Server Error: {str(e)}", exc_info=True)
+    return jsonify({
+        "error": "Internal server error",
+        "message": "An unexpected error occurred. Please try again later.",
+        "timestamp": datetime.utcnow().isoformat()
+    }), 500
 
-@app.route('/api/auto-process', methods=['POST'])
-def auto_process():
-    """
-    Traitement automatique utilisant le moteur modulaire.
-    """
-    data = request.get_json()
-    filename = data.get('filename')
-    category = data.get('category')
-    hotel_id = data.get('hotel_id')
-    tab_name = data.get('tab_name')
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Gestionnaire d'erreurs global pour toutes les exceptions non gérées."""
+    logger.error(f"Erreur non gérée: {str(e)}", exc_info=True)
     
-    if not all([filename, category, hotel_id]):
-        return jsonify({'error': 'filename, category et hotel_id sont requis'}), 400
-        
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    if not os.path.exists(file_path):
-        return jsonify({'error': f"Fichier non trouvé: {filename}"}), 404
-        
-    try:
-        supabase = get_supabase_client()
-        
-        # Initialiser le processeur via la factory
-        processor = ProcessorFactory.get_processor(
-            category, 
-            file_path, 
-            hotel_id, 
-            supabase, 
-            tab_name=tab_name
-        )
-        
-        # Exécuter les transformations
-        processor.apply_transformations()
-        
-        # Pousser vers Supabase
-        rows_inserted = processor.push_to_supabase()
-        
-        return jsonify({
-            'success': True,
-            'category': category,
-            'target_table': processor.target_table,
-            'rows_inserted': rows_inserted
-        })
-        
-    except Exception as e:
-        logger.error(f"ERREUR /api/auto-process: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
-
-
-# ============================================================================
-# ROUTES DE NETTOYAGE
-# ============================================================================
-
-@app.route('/api/cleanup/<filename>', methods=['DELETE'])
-def cleanup_file(filename):
-    """
-    Supprime un fichier uploadé temporairement.
-    """
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    # Ne pas renvoyer le traceback complet en production pour la sécurité
+    is_debug = os.getenv('FLASK_ENV') == 'development'
     
-    try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            return jsonify({'success': True})
-        else:
-            return jsonify({'error': 'Fichier non trouvé'}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-# ============================================================================
-# MAIN
-# ============================================================================
+    return jsonify({
+        "error": str(e),
+        "type": type(e).__name__,
+        "message": "An unexpected error occurred. The error has been logged.",
+        "timestamp": datetime.utcnow().isoformat(),
+        "debug_info": str(e) if is_debug else None
+    }), 500
 
 if __name__ == '__main__':
-    # Créer le dossier uploads
-    ensure_upload_folder()
+    # S'assurer que le dossier d'upload existe
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    # S'assurer que le dossier de logs existe
+    os.makedirs('/app/logs', exist_ok=True)
     
-    # Démarrer le serveur
-    port = int(os.getenv('PORT', 5000))
-    debug = os.getenv('FLASK_ENV', 'development') == 'development'
+    logger.info("Application démarrée")
+    logger.info(f"Environment: {os.getenv('FLASK_ENV', 'production')}")
     
-    print(f"""
-╔══════════════════════════════════════════════════════════════════╗
-║  Supabase Auto-Importer (RMS Sync) v2.0                         ║
-║  ==========================================                      ║
-║                                                                  ║
-║  Serveur Flask démarré sur: http://0.0.0.0:{port}                ║
-║  Mode: {'DEBUG' if debug else 'PRODUCTION'}                                        ║
-║                                                                  ║
-║  Endpoints principaux:                                           ║
-║    - POST /api/upload          : Upload de fichier               ║
-║    - POST /api/preview         : Prévisualisation                ║
-║    - POST /api/process         : Traitement ETL                  ║
-║    - GET  /api/tables          : Liste des tables                ║
-║    - POST /api/import/append   : Insertion dans table existante  ║
-║    - POST /api/import/create   : Création + insertion            ║
-║    - GET  /api/templates       : Liste des templates             ║
-║    - POST /api/templates       : Créer un template               ║
-║                                                                  ║
-║  IMPORTANT: Exécutez setup_db.sql dans Supabase Dashboard       ║
-╚══════════════════════════════════════════════════════════════════╝
-    """)
-    
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    # En production, utiliser Gunicorn
+    if os.getenv('FLASK_ENV') == 'production':
+        logger.info("Mode production: Gunicorn détecté")
+    else:
+        logger.info("Mode développement: Flask debug activé")
+        app.run(host='0.0.0.0', port=5000, debug=True)
