@@ -282,6 +282,137 @@ def auto_process():
     except Exception as e:
         logger.error(f"Auto-process error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+# ============================================================
+# ROUTES TEMPLATES
+# ============================================================
+@app.route('/api/templates', methods=['GET'])
+def list_templates():
+    try:
+        supabase = get_supabase_client()
+        result = supabase.table('import_templates').select('*').order('created_at', desc=True).execute()
+        return jsonify({'templates': result.data})
+    except Exception as e:
+        logger.error(f"ERREUR GET /api/templates: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/templates', methods=['POST'])
+def create_template():
+    data = request.get_json()
+    try:
+        supabase = get_supabase_client()
+        result = supabase.table('import_templates').insert(data).execute()
+        return jsonify({'success': True, 'template': result.data[0]})
+    except Exception as e:
+        logger.error(f"ERREUR POST /api/templates: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/templates/<template_id>', methods=['PUT'])
+def update_template(template_id):
+    data = request.get_json()
+    try:
+        supabase = get_supabase_client()
+        result = supabase.table('import_templates').update(data).eq('id', template_id).execute()
+        return jsonify({'success': True, 'template': result.data[0]})
+    except Exception as e:
+        logger.error(f"ERREUR PUT /api/templates: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/templates/<template_id>', methods=['DELETE'])
+def delete_template(template_id):
+    try:
+        supabase = get_supabase_client()
+        supabase.table('import_templates').delete().eq('id', template_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/templates/<template_id>/apply', methods=['POST'])
+def apply_template(template_id):
+    data = request.get_json()
+    try:
+        supabase = get_supabase_client()
+        result = supabase.table('import_templates').select('*').eq('id', template_id).execute()
+        if not result.data: return jsonify({'error': 'Template non trouvé'}), 404
+        template = result.data[0]
+        return jsonify({
+            'template': template,
+            'filename': data.get('filename'),
+            'sheet_name': data.get('sheet_name') or template.get('sheet_name'),
+            'column_mapping': template['column_mapping'],
+            'column_types': template['column_types'],
+            'target_table': template['target_table']
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ============================================================
+# ROUTES HOTELS
+# ============================================================
+@app.route('/api/hotels', methods=['GET'])
+def get_hotels():
+    try:
+        supabase = get_supabase_client()
+        result = supabase.table('hotels').select('*').order('hotel_name').execute()
+        return jsonify({'hotels': result.data})
+    except Exception as e:
+        logger.error(f"ERREUR GET /api/hotels: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/hotels', methods=['POST'])
+def create_hotel():
+    data = request.get_json()
+    hotel_id = data.get('hotel_id')
+    hotel_name = data.get('hotel_name')
+    if not hotel_id or not hotel_name:
+        return jsonify({'error': 'hotel_id et hotel_name sont requis'}), 400
+    try:
+        supabase = get_supabase_client()
+        result = supabase.table('hotels').insert({'hotel_id': hotel_id, 'hotel_name': hotel_name}).execute()
+        return jsonify({'success': True, 'hotel': result.data[0]})
+    except Exception as e:
+        logger.error(f"ERREUR POST /api/hotels: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/hotels/<id>', methods=['DELETE'])
+def delete_hotel(id):
+    try:
+        supabase = get_supabase_client()
+        supabase.table('hotels').delete().eq('id', id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"ERREUR DELETE /api/hotels: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# ============================================================
+# CLEANUP
+# ============================================================
+@app.route('/api/cleanup/<filename>', methods=['DELETE'])
+def cleanup_file(filename):
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            return jsonify({'success': True})
+        return jsonify({'error': 'Fichier non trouvé'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ============================================================
+# CACHE & FILES
+# ============================================================
+@app.route('/api/cache', methods=['GET'])
+def list_cache():
+    ensure_upload_folder()
+    try:
+        files = []
+        for f in sorted(os.listdir(UPLOAD_DIR)):
+            path = os.path.join(UPLOAD_DIR, f)
+            if os.path.isfile(path):
+                s = os.stat(path)
+                files.append({'filename': f, 'size': s.st_size, 'created_at': datetime.fromtimestamp(s.st_ctime).isoformat()})
+        return jsonify({'files': sorted(files, key=lambda x: x['created_at'], reverse=True)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     ensure_upload_folder()
