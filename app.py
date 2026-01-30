@@ -62,6 +62,23 @@ def setup_logging():
 setup_logging()
 
 # ============================================================
+# UTILS: ENV VARS ROBUSTES
+# ============================================================
+def get_env_flexible(name, default=None):
+    """Cherche une variable d'environnement de manière insensible à la casse."""
+    # 1. Exact match
+    val = os.getenv(name)
+    if val: return val
+    # 2. Case variations common
+    val = os.getenv(name.lower()) or os.getenv(name.upper())
+    if val: return val
+    # 3. Scan complet
+    for k, v in os.environ.items():
+        if k.upper() == name.upper():
+            return v
+    return default
+
+# ============================================================
 # CONFIGURATION FLASK
 # ============================================================
 load_dotenv()
@@ -72,14 +89,28 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_DIR
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 def get_supabase_client() -> Client:
-    # Récupération robuste (Casse, Préfixe)
-    url = os.getenv('SUPABASE_URL') or os.getenv('supabase_url')
-    key = os.getenv('SUPABASE_KEY') or os.getenv('supabase_key')
+    # Récupération ultra-robuste
+    url = get_env_flexible('SUPABASE_URL')
+    key = get_env_flexible('SUPABASE_KEY')
     
     if not url or not key:
-        logger.critical(f"CONFIG ERROR: SUPABASE_URL ({'OK' if url else 'MISSING'}) or SUPABASE_KEY ({'OK' if key else 'MISSING'}) are not set.")
-        raise ValueError("SUPABASE_URL or SUPABASE_KEY not set")
+        msg = f"CONFIG ERROR: SUPABASE_URL ({'OK' if url else 'MISSING'}) or SUPABASE_KEY ({'OK' if key else 'MISSING'}) are not set."
+        logger.critical(msg)
+        raise ValueError(msg)
     return create_client(url, key)
+
+# ============================================================
+# ROUTES DIAGNOSTIC
+# ============================================================
+@app.route('/api/debug/env', methods=['GET'])
+def debug_env():
+    """Liste les clés des variables d'env disponibles (sans les valeurs)."""
+    return jsonify({
+        "keys": sorted(list(os.environ.keys())),
+        "supabase_url_found": get_env_flexible('SUPABASE_URL') is not None,
+        "supabase_key_found": get_env_flexible('SUPABASE_KEY') is not None,
+        "python_version": sys.version
+    })
 
 # ============================================================
 # GLOBAL ERROR HANDLER
