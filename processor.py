@@ -66,11 +66,10 @@ class BaseProcessor:
                 result = self.supabase.table(self.target_table).insert(chunk).execute()
                 
                 # Vérifier si l'insertion a réussi
-                if result and hasattr(result, 'data') and result.get('data'):
+                if result and hasattr(result, 'data'):
                     success_count += len(chunk)
                     logger.debug(f"Chunk {i//chunk_size + 1} inséré avec succès")
                 else:
-                    # Si pas de réponse data, on considère l'insertion comme échouée
                     raise Exception("Insertion retournée sans données (possible échec partiel)")
                     
             except Exception as e:
@@ -82,9 +81,6 @@ class BaseProcessor:
                     'end': i + chunk_size,
                     'error': str(e)
                 })
-                
-                # En cas d'erreur, continuer pour ne pas bloquer tout le processus
-                # mais journaliser l'erreur pour analyse ultérieure
         
         # Rapport final
         total_chunks = (len(clean_data) + chunk_size - 1) // chunk_size
@@ -92,7 +88,6 @@ class BaseProcessor:
         
         if failed_chunks:
             logger.error(f"{len(failed_chunks)}/{total_chunks} chunks échoués")
-            # Sauvegarder les données échouées dans un fichier pour reprise
             self.save_failed_chunks(failed_chunks)
         else:
             logger.info("Tous les chunks insérés avec succès")
@@ -146,78 +141,113 @@ class DedgePlanningProcessor(BaseProcessor):
     
     def apply_transformations(self):
         self.target_table = "D-EDGE PLANNING TARIFS DISPO ET PLANS TARIFAIRES"
+        
+        # Lecture sans header pour analyser manuellement
         self.read_excel(header=None)
         
-        logger.info(f"Planning: Shape = {self.df.shape}")
-        
-        # Détection de la ligne de dates
+        # Identification dynamique de la ligne contenant les dates
+        # On cherche une ligne qui contient plusieurs dates valides
         date_row_idx = None
-        for idx, row in self.df.iterrows():
-            if pd.notna(row['Date']).any() and isinstance(row['Date'], str):
-                date_row_idx = idx
+        dates = []
+        
+        for i in range(10): # On cherche dans les 10 premières lignes
+            row = self.df.iloc[i]
+            potential_dates = []
+            for val in row[2:]:
+                try:
+                    d = pd.to_datetime(val)
+                    if not pd.isna(d):
+                        potential_dates.append(d.strftime('%Y-%m-%d'))
+                    else:
+                        potential_dates.append(None)
+                except:
+                    potential_dates.append(None)
+            
+            # Si on a trouvé au moins 3 dates valides consécutives
+            if len([d for d in potential_dates if d]) >= 3:
+                date_row_idx = i
+                dates = potential_dates
                 break
         
         if date_row_idx is None:
-            logger.warning("Aucune ligne de dates trouvée")
-            return False
+            raise ValueError("Impossible de trouver la ligne des dates dans le rapport D-EDGE Planning.")
+
+        # Données utiles à partir de la ligne suivant la ligne de dates
+        data_rows = self.df.iloc[date_row_idx + 1:]
         
-        logger.info(f"Ligne de dates trouvée à l'index {date_row_idx}")
+        records = []
+        current_room_type = None
         
-        # Extraire les noms de colonnes de dates
-        date_columns = []
-        date_row = self.df.iloc[date_row_idx]
+        for idx, row in data_rows.iterrows():
+            room_type = row[0]
+            rate_plan = row[1]
+            
+            # Propagation du type de chambre si vide
+            if pd.notna(room_type) and room_type != "":
+                current_room_type = room_type
+            
+            # Le type de prix / dispo
+            price_type = row[2] # ex: 'Price (EUR)' or 'Left for sale'
+            
+            if pd.isna(price_type): continue
+            
+            # Parcourir les colonnes de dates
+            for i, d in enumerate(dates):
+                if d is None: continue
+                
+                records.append({
+                    'hotel_id': self.hotel_id,
+                    'room_type': current_room_type,
+                    'rate_plan': rate_plan,
+                    'price_type': price_type,
+                    'date': d,
+                    'value': row[i+2]
+                })
+        
+        # Remplacer le DF par les enregistrements aplatis
+        self.df = pd.DataFrame(records)
+        
+        # Nettoyage final des valeurs numériques
+        def safe_float(v):
+            try: return float(v)
+            except: return None
+            
+        self.df['value'] = self.df['value'].apply(safe_float)
+        
+        logger.info(f"Planning: {len(self.df)} lignes prêtes")
+
+class SalonsEventsProcessor(BaseProcessor):
+    """Processeur spécialisé pour les dates des salons et événements."""
+    
+    def apply_transformations(self):
+        self.target_table = "DATES SALONS ET ÉVÉNEMENTS"
+        self.read_excel()
+        self.inject_hotel_id()
+        
+        # Normalisation agressive des dates
         for col in self.df.columns:
-            if pd.notna(date_row[col]) and isinstance(date_row[col], str):
-                date_columns.append(col)
+            if self.df[col].dtype == 'object' or 'date' in str(col).lower():
+                try:
+                    self.df[col] = pd.to_datetime(self.df[col], errors='coerce')
+                    if pd.api.types.is_datetime64_any_dtype(self.df[col]):
+                        self.df[col] = self.df[col].dt.strftime('%Y-%m-%d')
+                except:
+                    pass
         
-        logger.info(f"Colonnes de dates détectées: {len(date_columns)}")
-        
-        # Renommer les colonnes pour supprimer les caractères spéciaux
-        self.df.columns = [snake_case(str(col)) for col in self.df.columns]
-        
-        # Normaliser les colonnes de dates
-        original_columns = list(self.df.columns)
-        date_columns_normalized = []
-        for col in date_columns:
-            col_normalized = snake_case(col)
-            if col_normalized in original_columns:
-                self.df[col_normalized] = pd.to_datetime(self.df[col_normalized], errors='coerce').dt.strftime('%Y-%m-%d')
-                date_columns_normalized.append(col_normalized)
-        
-        logger.info(f"Colonnes de dates normalisées: {len(date_columns_normalized)}")
-        logger.info(f"Shape final: {self.df.shape}")
-        
-        return True
+        logger.info(f"Salons/Événements: {len(self.df)} lignes prêtes")
 
 class ProcessorFactory:
     """Factory pour instancier les bons processeurs selon le type de fichier."""
     
     @staticmethod
     def get_processor(table_type, file_path, hotel_id, supabase_client: Client):
-        """
-        Instancie le processeur approprié selon le type de table.
+        table_type_upper = table_type.upper()
         
-        Args:
-            table_type (str): Type de données ('planning' ou 'reservation')
-            file_path (str): Chemin vers le fichier Excel
-            hotel_id (str): Identifiant de l'hôtel
-            supabase_client (Client): Client Supabase initialisé
-        
-        Returns:
-            BaseProcessor: Processeur instancié
-        
-        Raises:
-            ValueError: Si le type de table n'est pas supporté
-        """
-        table_type_lower = table_type.lower()
-        
-        if "planning" in table_type_lower:
-            logger.info(f"Instanciation de DedgePlanningProcessor pour '{table_type}'")
+        if "PLANNING" in table_type_upper:
             return DedgePlanningProcessor(file_path, hotel_id, supabase_client)
-        elif "reservation" in table_type_lower:
-            logger.info(f"Instanciation de DedgeReservationProcessor pour '{table_type}'")
+        elif "RÉSERVATION" in table_type_upper or "RESERVATION" in table_type_upper:
             return DedgeReservationProcessor(file_path, hotel_id, supabase_client)
+        elif "SALON" in table_type_upper or "ÉVÉNEMENT" in table_type_upper or "EVENEMENT" in table_type_upper:
+            return SalonsEventsProcessor(file_path, hotel_id, supabase_client)
         else:
-            error_msg = f"Type de table inconnu: {table_type}. Attendu: 'planning' ou 'reservation'"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+            raise ValueError(f"Type de table inconnu: {table_type}")

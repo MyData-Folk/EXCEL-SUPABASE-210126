@@ -1,4 +1,4 @@
-# RMS Sync v2.1 - Full Stack with Global APP_DIR (Fixes NameError)
+# RMS Sync v2.1 - Full Stack with Global APP_DIR
 import os
 import sys
 import json
@@ -7,20 +7,29 @@ import math
 import uuid
 import re
 import logging
+import logging.handlers
 from datetime import datetime
 from pathlib import Path
 from functools import wraps
 import traceback
+import unicodedata
 
 import pandas as pd
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from werkzeug.utils import secure_filename
 
 # S'assurer que le dossier courant est accessible
 sys.path.append(os.getcwd())
-from utils import snake_case, json_safe
+try:
+    from utils import snake_case, json_safe
+except ImportError:
+    # Fallback si utils.py n'est pas encore prêt ou différent
+    def snake_case(s): return str(s).lower().replace(' ', '_')
+    def json_safe(o): return o
+
 from processor import ProcessorFactory
 
 # Configuration des logs
@@ -30,312 +39,250 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # DÉFINITION GLOBALE DES RÉPERTOIRES
 # ============================================================
-# CORRECTION : Définir APP_DIR et UPLOAD_DIR au début du fichier
-# pour qu'ils soient accessibles dans les gestionnaires d'erreurs
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(APP_DIR, 'uploads')
+MAX_PREVIEW_ROWS = 20
 
 # ============================================================
 # SETUP LOGGING
 # ============================================================
-
 def setup_logging():
-    log_dir = '/app/logs'
+    log_dir = os.path.join(APP_DIR, 'logs')
     log_file = os.path.join(log_dir, 'app.log')
-    
     try:
         os.makedirs(log_dir, exist_ok=True)
-        
         file_handler = logging.handlers.RotatingFileHandler(
-            log_file,
-            maxBytes=10*1024*1024,
-            backupCount=5,
-            encoding='utf-8'
+            log_file, maxBytes=10*1024*1024, backupCount=5, encoding='utf-8'
         )
-        file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s] %(message)s'))
-        
         logger.addHandler(file_handler)
-        logger.info(f"File logging activé: {log_file}")
-        
-    except (PermissionError, FileNotFoundError, OSError) as e:
-        logger.warning(f"Impossible de créer le dossier de logs ({log_dir}): {str(e)}")
-        logger.warning("Fallback vers logging console uniquement")
-        
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%H:%M:%S'))
-        
-        logger.addHandler(console_handler)
+    except Exception as e:
+        print(f"Erreur logging: {e}")
 
 setup_logging()
 
 # ============================================================
 # CONFIGURATION FLASK
 # ============================================================
-
 load_dotenv()
-
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH',52428800))
+app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 52428800))
 app.config['UPLOAD_FOLDER'] = UPLOAD_DIR
 
-CORS(app, resources={
-    r"/api/*": {
-        "origins": "*",
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
-    }
-})
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-@app.before_request
-def log_request_info():
-    """Logue les détails de chaque requête."""
-    logger.debug(f"Requête {request.method} {request.path}")
-    logger.debug(f"Headers: {dict(request.headers)}")
-    logger.debug(f"Args: {request.args}")
+def get_supabase_client() -> Client:
+    url = os.getenv('SUPABASE_URL')
+    key = os.getenv('SUPABASE_KEY')
+    if not url or not key:
+        raise ValueError("SUPABASE_URL or SUPABASE_KEY not set")
+    return create_client(url, key)
 
 # ============================================================
-# ROUTE FRONTEND (SERVEUR DE FICHIERS STATIQUES)
+# UTILS & HELPERS
 # ============================================================
+def ensure_upload_folder():
+    if not os.path.exists(UPLOAD_DIR):
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+def read_csv_robust(file_path, **kwargs):
+    encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+    delimiters = [None, ',', ';', '\t', '|']
+    read_params = kwargs.copy()
+    read_params['on_bad_lines'] = 'skip'
+    read_params['engine'] = 'python'
+    
+    last_error = None
+    for encoding in encodings:
+        read_params['encoding'] = encoding
+        try:
+            with open(file_path, 'r', encoding=encoding) as f:
+                sample = f.read(2048)
+                try:
+                    dialect = csv.Sniffer().sniff(sample)
+                    detected_sep = dialect.delimiter
+                except:
+                    detected_sep = None
+            
+            seps = [detected_sep] if detected_sep else delimiters[1:]
+            for sep in seps:
+                if sep: read_params['sep'] = sep
+                try:
+                    df = pd.read_csv(file_path, **read_params)
+                    if not df.empty: return df
+                except Exception as e:
+                    last_error = e
+        except:
+            continue
+    raise last_error or ValueError("Impossible de lire le CSV")
+
+def parse_date(value):
+    if pd.isna(value) or value == '': return None
+    try:
+        return pd.to_datetime(value, dayfirst=True).strftime('%Y-%m-%d')
+    except:
+        return str(value)
+
+def clean_number(value):
+    if pd.isna(value): return None
+    try:
+        s = str(value).replace(' ', '').replace('\xa0', '').replace(',', '.')
+        s = re.sub(r'[^0-9.\-]', '', s)
+        return float(s)
+    except:
+        return None
+
+def clean_text(value):
+    if pd.isna(value): return None
+    return str(value).strip()
+
+def normalize_dataframe(df, column_types=None, column_mapping=None, split_datetime=False, hotel_id=None):
+    df = df.copy()
+    if column_types:
+        for col, t in column_types.items():
+            if col not in df.columns: continue
+            if t == 'date': df[col] = df[col].apply(parse_date)
+            elif t == 'numeric': df[col] = df[col].apply(clean_number)
+            elif t == 'text': df[col] = df[col].apply(clean_text)
+    
+    if column_mapping:
+        valid = {k: v for k, v in column_mapping.items() if v and k in df.columns}
+        if valid: df = df[list(valid.keys())].rename(columns=valid)
+        else: df.columns = [snake_case(c) for c in df.columns]
+    else:
+        df.columns = [snake_case(c) for c in df.columns]
+        
+    if hotel_id:
+        df.insert(0, 'hotel_id', hotel_id)
+    return df.where(pd.notnull(df), None)
+
+def dataframe_to_json_records(df):
+    df = df.where(pd.notnull(df), None)
+    records = df.to_dict(orient='records')
+    for r in records:
+        for k, v in r.items():
+            if isinstance(v, (datetime, pd.Timestamp)):
+                r[k] = v.strftime('%Y-%m-%d')
+            elif isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                r[k] = None
+    return records
+
+# ============================================================
+# ROUTES
+# ============================================================
 @app.route('/')
 def index():
-    """Page d'accueil (Dashboard) - Utilise APP_DIR global."""
-    index_path = os.path.join(APP_DIR, 'index.html')
-    
-    try:
-        logger.info(f"Serving index.html from: {index_path}")
-        return send_file(index_path)
-    except FileNotFoundError:
-        logger.error(f"index.html not found at: {index_path}")
-        return jsonify({
-            "error": "index.html not found",
-            "path": index_path,
-            "app_dir": APP_DIR,
-            "message": "The frontend file could not be found on the server."
-        }), 404
+    return send_file(os.path.join(APP_DIR, 'index.html'))
 
-@app.route('/favicon.ico')
-def favicon():
-    """Icône du navigateur."""
-    favicon_path = os.path.join(APP_DIR, 'favicon.ico')
-    
-    try:
-        return send_file(favicon_path, mimetype='image/vnd.microsoft.icon')
-    except FileNotFoundError:
-        return '', 204
-
-# ============================================================
-# ROUTES API (BACKEND)
-# ============================================================
-
-@app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check simplifié - Vérifie seulement si le client peut être initialisé."""
-    try:
-        # 1. Vérifier si les variables sont définies
-        supabase_url = os.getenv('SUPABASE_URL')
-        supabase_key = os.getenv('SUPABASE_KEY')
-        
-        if not supabase_url or not supabase_key:
-            return jsonify({
-                "status": "unhealthy",
-                "error": "Missing SUPABASE_URL or SUPABASE_KEY",
-                "supabase_connected": False,
-                "timestamp": datetime.utcnow().isoformat()
-            }), 503
-        
-        # 2. Initialiser le client (Ceci teste la connexion et les credentials)
-        client = create_client(supabase_url, supabase_key)
-        
-        # 3. Succès immédiat (on n'a pas besoin de faire une requête SQL)
-        logger.info(f"Health check OK - Supabase connected: {supabase_url}")
-        
-        return jsonify({
-            "status": "healthy",
-            "supabase_connected": True,
-            "supabase_url": supabase_url,
-            "version": "2.1-fullstack",
-            "timestamp": datetime.utcnow().isoformat()
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Health check échoué: {str(e)}", exc_info=True)
-        return jsonify({
-            "status": "unhealthy",
-            "error": str(e),
-            "supabase_connected": False,
-            "timestamp": datetime.utcnow().isoformat()
-        }), 503
-
-@app.route('/api/diag-excel', methods=['GET'])
-def diag_excel():
-    """Endpoint temporaire pour inspecter la structure du fichier Planning."""
-    file_path = os.path.join(APP_DIR, 'MODELE DE FICHIER EXCEL', 'RAPPORT PLANNING D-EDGE.xlsx')
-    
-    if not os.path.exists(file_path):
-        logger.error(f"Fichier introuvable: {file_path}")
-        return jsonify({"error": "File not found", "path": file_path}), 404
-    
-    try:
-        df = pd.read_excel(file_path)
-        logger.info(f"Fichier lu: {len(df)} lignes, {len(df.columns)} colonnes")
-        
-        return jsonify({
-            "path": file_path,
-            "shape": df.shape,
-            "columns": list(df.columns),
-            "memory_usage": df.memory_usage(deep=True).to_dict()
-        }), 200
-    except Exception as e:
-        logger.error(f"Erreur lecture Excel: {str(e)}", exc_info=True)
-        return jsonify({
-            "error": str(e),
-            "path": file_path
-        }), 500
+    return jsonify({"status": "healthy", "version": "2.1-merged"})
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """Endpoint d'upload de fichiers Excel."""
-    if 'file' not in request.files:
-        logger.warning("Upload sans fichier")
-        return jsonify({"error": "No file part"}), 400
-    
+    if 'file' not in request.files: return jsonify({"error": "No file"}), 400
     file = request.files['file']
+    if file.filename == '': return jsonify({"error": "No name"}), 400
     
-    if file.filename == '':
-        logger.warning("Upload avec nom de fichier vide")
-        return jsonify({"error": "No selected file"}), 400
+    ensure_upload_folder()
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    file.save(filepath)
     
-    if file:
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(UPLOAD_DIR, filename)
+    file_ext = filename.rsplit('.', 1)[1].lower()
+    metadata = {'filename': filename, 'filepath': filename}
+    
+    try:
+        if file_ext in ['xlsx', 'xls']:
+            xl = pd.ExcelFile(filepath)
+            metadata['sheets'] = xl.sheet_names
+            df = pd.read_excel(filepath, sheet_name=xl.sheet_names[0], header=None)
+        else:
+            df = read_csv_robust(filepath, header=None)
         
-        logger.info(f"Upload démarré: {filename} -> {filepath}")
+        df.columns = [str(c).strip() for c in df.columns]
+        metadata['headers'] = list(df.columns)
+        metadata['preview'] = dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS))
+        metadata['total_rows'] = len(df)
+        return jsonify(metadata)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/preview', methods=['POST'])
+def preview_file():
+    data = request.get_json()
+    filename = data.get('filename')
+    sheet_name = data.get('sheet_name')
+    header_row = data.get('header_row')
+    
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    file_ext = filename.rsplit('.', 1)[1].lower()
+    
+    try:
+        params = {'sheet_name': sheet_name} if sheet_name else {}
+        params['header'] = int(header_row) if header_row is not None else None
         
-        try:
-            file.save(filepath)
-            file_size = os.path.getsize(filepath)
-            logger.info(f"Upload terminé: {file_size} bytes")
+        if file_ext in ['xlsx', 'xls']:
+            df = pd.read_excel(filepath, **params)
+        else:
+            df = read_csv_robust(filepath, **params)
             
-            return jsonify({
-                "message": "File uploaded successfully",
-                "filename": filename,
-                "path": filepath,
-                "size": file_size,
-                "timestamp": datetime.utcnow().isoformat()
-            }), 201
-        except Exception as e:
-            logger.error(f"Erreur upload: {str(e)}", exc_info=True)
-            return jsonify({
-                "error": str(e),
-                "filename": filename
-            }), 500
-    else:
-        return jsonify({"error": "Upload failed"}), 500
+        df.columns = [str(c).strip() for c in df.columns]
+        return jsonify({
+            'headers': list(df.columns),
+            'preview': dataframe_to_json_records(df.head(MAX_PREVIEW_ROWS)),
+            'total_rows': len(df)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/parse', methods=['POST'])
-def parse_file():
-    """Endpoint de parsing de fichiers Excel."""
-    if 'file' not in request.files:
-        logger.warning("Parse sans fichier")
-        return jsonify({"error": "No file part"}), 400
-    
-    file = request.files['file']
-    table_type = request.form.get('type', 'dedge_planning')
-    hotel_id = request.form.get('hotel_id', 'default')
-    
-    if file:
-        try:
-            logger.info(f"Parse demandé: type={table_type}, hotel_id={hotel_id}")
+@app.route('/api/tables', methods=['GET'])
+def get_tables():
+    try:
+        result = get_supabase_client().rpc('get_public_tables').execute()
+        return jsonify({'tables': [r['table_name'] for r in result.data] if result.data else []})
+    except Exception as e:
+        return jsonify({'tables': [], 'error': str(e)})
+
+@app.route('/api/tables/<table_name>/columns', methods=['GET'])
+def get_table_columns(table_name):
+    try:
+        result = get_supabase_client().rpc('get_table_columns', {'t_name': table_name}).execute()
+        return jsonify({'table_name': table_name, 'columns': result.data or []})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/api/import/append', methods=['POST'])
+def import_append():
+    data = request.get_json()
+    filepath = os.path.join(UPLOAD_DIR, data['filename'])
+    try:
+        df = pd.read_excel(filepath) if data['filename'].endswith('.xlsx') else read_csv_robust(filepath)
+        df_norm = normalize_dataframe(df, data.get('column_types'), data.get('column_mapping'), False, data.get('hotel_id'))
+        records = dataframe_to_json_records(df_norm)
+        
+        supabase = get_supabase_client()
+        batch_size = 500
+        for i in range(0, len(records), batch_size):
+            supabase.table(data['table_name']).insert(records[i:i+batch_size]).execute()
             
-            processor = ProcessorFactory.get_processor(table_type, file, hotel_id)
-            processor.apply_transformations()
-            
-            result = processor.push_to_supabase()
-            records_inserted = result['success']
-            failed_chunks = result['failed']
-            
-            return jsonify({
-                "message": "File parsed and uploaded successfully",
-                "table_type": table_type,
-                "records_inserted": records_inserted,
-                "hotel_id": hotel_id,
-                "failed_chunks": len(failed_chunks),
-                "timestamp": datetime.utcnow().isoformat()
-            }), 200
-        except ValueError as e:
-            logger.error(f"Erreur validation: {str(e)}", exc_info=True)
-            return jsonify({
-                "error": str(e),
-                "type": "ValidationError"
-            }), 400
-        except Exception as e:
-            logger.error(f"Erreur parsing: {str(e)}", exc_info=True)
-            return jsonify({
-                "error": str(e),
-                "type": "ParsingError"
-            }), 500
+        return jsonify({'success': True, 'rows_inserted': len(records)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-# ============================================================
-# GESTIONNAIRES D'ERREURS (Utilise APP_DIR global)
-# ============================================================
-
-@app.errorhandler(404)
-def handle_not_found(e):
-    """Gestionnaire d'erreurs 404."""
-    return jsonify({
-        "error": "Resource not found",
-        "path": request.path,
-        "message": "The requested resource was not found on this server.",
-        "app_dir": APP_DIR,  # Utilise la variable globale
-        "timestamp": datetime.utcnow().isoformat()
-    }), 404
-
-@app.errorhandler(500)
-def handle_internal_server_error(e):
-    """Gestionnaire d'erreurs 500."""
-    logger.error(f"500 Internal Server Error: {str(e)}", exc_info=True)
-    return jsonify({
-        "error": "Internal server error",
-        "message": "An unexpected error occurred. Please try again later.",
-        "timestamp": datetime.utcnow().isoformat()
-    }), 500
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    """Gestionnaire d'erreurs global."""
-    logger.error(f"Erreur non gérée: {str(e)}", exc_info=True)
-    is_debug = os.getenv('FLASK_ENV') == 'development'
-    
-    return jsonify({
-        "error": str(e),
-        "type": type(e).__name__,
-        "message": "An unexpected error occurred. The error has been logged.",
-        "timestamp": datetime.utcnow().isoformat(),
-        "debug_info": str(e) if is_debug else None
-    }), 500
-
-# ============================================================
-# MAIN ENTRY POINT
-# ============================================================
+@app.route('/api/auto-process', methods=['POST'])
+def auto_process():
+    data = request.get_json()
+    filepath = os.path.join(UPLOAD_DIR, data['filename'])
+    try:
+        processor = ProcessorFactory.get_processor(data['category'], filepath, data['hotel_id'], get_supabase_client())
+        processor.apply_transformations()
+        res = processor.push_to_supabase()
+        return jsonify({'success': True, 'rows_inserted': res['success'], 'target_table': processor.target_table})
+    except Exception as e:
+        logger.error(f"Auto-process error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # Création des dossiers nécessaires (APP_DIR et UPLOAD_DIR sont déjà définis)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    os.makedirs('/app/logs', exist_ok=True)
-    
-    logger.info("Application démarrée (Full Stack with Global APP_DIR)")
-    logger.info(f"Environment: {os.getenv('FLASK_ENV', 'production')}")
-    logger.info(f"App Directory: {APP_DIR}")
-    logger.info(f"Upload Directory: {UPLOAD_DIR}")
-    logger.info(f"Python Version: {sys.version.split()[0]}")
-    logger.info(f"index.html exists: {os.path.exists(os.path.join(APP_DIR, 'index.html'))}")
-    
-    if os.getenv('FLASK_ENV') == 'production':
-        logger.info("Mode production: Gunicorn détecté")
-        # CMD configuré dans Dockerfile
-    else:
-        logger.info("Mode développement: Flask debug activé")
-        app.run(host='0.0.0.0', port=5000, debug=True)
+    ensure_upload_folder()
+    app.run(host='0.0.0.0', port=5000, debug=True)
