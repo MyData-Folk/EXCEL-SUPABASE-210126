@@ -1,4 +1,4 @@
-# RMS Sync v2.1 - Deployment Refresh avec Debugging
+# RMS Sync v2.1 - Deployment Refresh avec Logging Robuste
 import os
 import sys
 import json
@@ -23,27 +23,52 @@ sys.path.append(os.getcwd())
 from utils import snake_case, json_safe
 from processor import ProcessorFactory
 
-# Configuration des logs avec rotation
+# Configuration des logs
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(name)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-# File handler pour logs persistants (10MB max, backup de 5 fichiers)
-file_handler = logging.handlers.RotatingFileHandler(
-    '/app/logs/app.log',
-    maxBytes=10*1024*1024,  # 10MB
-    backupCount=5,
-    encoding='utf-8'
-)
-file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s] %(message)s'))
+# Configuration des handlers de logs avec fallback
+def setup_logging():
+    """
+    Configure les handlers de logs avec une fallback intelligente.
+    Essa d'utiliser un fichier de logs, sinon utilise la console.
+    """
+    log_dir = '/app/logs'
+    log_file = os.path.join(log_dir, 'app.log')
+    
+    # Essayer d'utiliser le FileHandler (rotation automatique)
+    try:
+        # Créer le dossier de logs si possible
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # File handler avec rotation (10MB max, backup de 5 fichiers)
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=10*1024*1024,  # 10MB
+            backupCount=5,
+            encoding='utf-8'
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s] %(message)s'))
+        
+        # Ajouter le handler
+        logger.addHandler(file_handler)
+        logger.info(f"File logging activé: {log_file}")
+        
+    except (PermissionError, FileNotFoundError, OSError) as e:
+        # CORRECTION: Si erreur de fichier, utiliser uniquement la console
+        logger.warning(f"Impossible de créer le dossier de logs ({log_dir}): {str(e)}")
+        logger.warning("Fallback vers logging console uniquement")
+        
+        # Console handler (moins verbeux)
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%H:%M:%S'))
+        
+        logger.addHandler(console_handler)
 
-# Console handler (moins verbeux)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+# Configuration des logs au démarrage
+setup_logging()
 
 # Chargement des variables d'environnement
 load_dotenv()
@@ -68,7 +93,6 @@ def log_request_info():
     logger.debug(f"Requête {request.method} {request.path}")
     logger.debug(f"Headers: {dict(request.headers)}")
     logger.debug(f"Args: {request.args}")
-    logger.debug(f"Content-Type: {request.content_type}")
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -98,6 +122,7 @@ def health_check():
             "status": "healthy",
             "supabase": "connected",
             "version": "2.1",
+            "logging": os.path.exists('/app/logs/app.log') if os.path.exists('/app/logs') else False,
             "timestamp": datetime.utcnow().isoformat()
         }), 200
     except Exception as e:
@@ -199,16 +224,18 @@ def parse_file():
             processor.apply_transformations()
             
             # Pousser vers Supabase avec gestion d'erreurs
-            records_inserted = processor.push_to_supabase()
-            records_failed = 0
+            result = processor.push_to_supabase()
+            records_inserted = result['success']
+            failed_chunks = result['failed']
             
-            logger.info(f"Insertion terminée: {records_inserted} enregistrements")
+            logger.info(f"Insertion terminée: {records_inserted} enregistrements, {len(failed_chunks)} chunks échoués")
             
             return jsonify({
                 "message": "File parsed and uploaded successfully",
                 "table_type": table_type,
                 "records_inserted": records_inserted,
                 "hotel_id": hotel_id,
+                "failed_chunks": len(failed_chunks),
                 "timestamp": datetime.utcnow().isoformat()
             }), 200
         except ValueError as e:
@@ -275,15 +302,18 @@ def handle_exception(e):
 if __name__ == '__main__':
     # S'assurer que le dossier d'upload existe
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    # S'assurer que le dossier de logs existe
-    os.makedirs('/app/logs', exist_ok=True)
     
     logger.info("Application démarrée")
     logger.info(f"Environment: {os.getenv('FLASK_ENV', 'production')}")
+    logger.info(f"Python Version: {sys.version}")
     
     # En production, utiliser Gunicorn
     if os.getenv('FLASK_ENV') == 'production':
         logger.info("Mode production: Gunicorn détecté")
+        # CORRECTION: Utiliser 2 workers au lieu de 4 (plus stable)
+        # CORRECTION: Supprimer --preload (réduit la consommation mémoire)
+        # --timeout 300: On laisse 5 minutes pour le démarrage (cold start) et les gros fichiers
+        CMD = ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "300", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
     else:
         logger.info("Mode développement: Flask debug activé")
         app.run(host='0.0.0.0', port=5000, debug=True)
