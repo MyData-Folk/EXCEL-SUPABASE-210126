@@ -1,4 +1,4 @@
-# RMS Sync v2.1 - Full Stack with Simplified Health Check
+# RMS Sync v2.1 - Full Stack with Global APP_DIR (Fixes NameError)
 import os
 import sys
 import json
@@ -27,7 +27,18 @@ from processor import ProcessorFactory
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(name)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-# Setup logging robuste avec fallback
+# ============================================================
+# DÉFINITION GLOBALE DES RÉPERTOIRES
+# ============================================================
+# CORRECTION : Définir APP_DIR et UPLOAD_DIR au début du fichier
+# pour qu'ils soient accessibles dans les gestionnaires d'erreurs
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(APP_DIR, 'uploads')
+
+# ============================================================
+# SETUP LOGGING
+# ============================================================
+
 def setup_logging():
     log_dir = '/app/logs'
     log_file = os.path.join(log_dir, 'app.log')
@@ -59,15 +70,16 @@ def setup_logging():
 
 setup_logging()
 
-# Chargement des variables d'environnement
+# ============================================================
+# CONFIGURATION FLASK
+# ============================================================
+
 load_dotenv()
 
-# Configuration Flask
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH',52428800))
-app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
+app.config['UPLOAD_FOLDER'] = UPLOAD_DIR
 
-# Configuration CORS
 CORS(app, resources={
     r"/api/*": {
         "origins": "*",
@@ -89,7 +101,7 @@ def log_request_info():
 
 @app.route('/')
 def index():
-    """Page d'accueil (Dashboard)."""
+    """Page d'accueil (Dashboard) - Utilise APP_DIR global."""
     index_path = os.path.join(APP_DIR, 'index.html')
     
     try:
@@ -100,12 +112,13 @@ def index():
         return jsonify({
             "error": "index.html not found",
             "path": index_path,
+            "app_dir": APP_DIR,
             "message": "The frontend file could not be found on the server."
         }), 404
 
 @app.route('/favicon.ico')
 def favicon():
-    """Icône du navigateur (évite les 404)."""
+    """Icône du navigateur."""
     favicon_path = os.path.join(APP_DIR, 'favicon.ico')
     
     try:
@@ -134,7 +147,6 @@ def health_check():
             }), 503
         
         # 2. Initialiser le client (Ceci teste la connexion et les credentials)
-        # Si cette ligne échoue, c'est que les credentials ou l'URL sont invalides
         client = create_client(supabase_url, supabase_key)
         
         # 3. Succès immédiat (on n'a pas besoin de faire une requête SQL)
@@ -197,7 +209,7 @@ def upload_file():
         return jsonify({"error": "No selected file"}), 400
     
     if file:
-        filename = file.filename
+        filename = secure_filename(file.filename)
         filepath = os.path.join(UPLOAD_DIR, filename)
         
         logger.info(f"Upload démarré: {filename} -> {filepath}")
@@ -267,7 +279,7 @@ def parse_file():
             }), 500
 
 # ============================================================
-# GESTIONNAIRES D'ERREURS
+# GESTIONNAIRES D'ERREURS (Utilise APP_DIR global)
 # ============================================================
 
 @app.errorhandler(404)
@@ -277,7 +289,7 @@ def handle_not_found(e):
         "error": "Resource not found",
         "path": request.path,
         "message": "The requested resource was not found on this server.",
-        "app_dir": APP_DIR,
+        "app_dir": APP_DIR,  # Utilise la variable globale
         "timestamp": datetime.utcnow().isoformat()
     }), 404
 
@@ -295,7 +307,6 @@ def handle_internal_server_error(e):
 def handle_exception(e):
     """Gestionnaire d'erreurs global."""
     logger.error(f"Erreur non gérée: {str(e)}", exc_info=True)
-    
     is_debug = os.getenv('FLASK_ENV') == 'development'
     
     return jsonify({
@@ -311,20 +322,20 @@ def handle_exception(e):
 # ============================================================
 
 if __name__ == '__main__':
-    # Création des dossiers nécessaires avec chemins absolus
-    APP_DIR = os.path.dirname(os.path.abspath(__file__))
-    UPLOAD_DIR = os.path.join(APP_DIR, 'uploads')
-    
+    # Création des dossiers nécessaires (APP_DIR et UPLOAD_DIR sont déjà définis)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs('/app/logs', exist_ok=True)
     
-    logger.info("Application démarrée (Full Stack with Simplified Health Check)")
+    logger.info("Application démarrée (Full Stack with Global APP_DIR)")
     logger.info(f"Environment: {os.getenv('FLASK_ENV', 'production')}")
     logger.info(f"App Directory: {APP_DIR}")
     logger.info(f"Upload Directory: {UPLOAD_DIR}")
+    logger.info(f"Python Version: {sys.version.split()[0]}")
+    logger.info(f"index.html exists: {os.path.exists(os.path.join(APP_DIR, 'index.html'))}")
     
     if os.getenv('FLASK_ENV') == 'production':
         logger.info("Mode production: Gunicorn détecté")
+        # CMD configuré dans Dockerfile
     else:
         logger.info("Mode développement: Flask debug activé")
         app.run(host='0.0.0.0', port=5000, debug=True)
