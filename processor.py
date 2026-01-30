@@ -49,12 +49,12 @@ class BaseProcessor:
         df_clean = df_clean.where(pd.notnull(df_clean), None)
         raw_data = df_clean.to_dict(orient='records')
         
-        # CORRECTION: Nettoyage récursif garanti avec json_safe
+        # Nettoyage récursif garanti
         clean_data = [json_safe(record) for record in raw_data]
         
         logger.info(f"Push vers {self.target_table}: {len(clean_data)} enregistrements")
         
-        # CORRECTION: Chunking avec gestion d'erreurs et rollback
+        # Chunking avec gestion d'erreurs
         chunk_size = 500
         failed_chunks = []
         success_count = 0
@@ -63,13 +63,9 @@ class BaseProcessor:
             chunk = clean_data[i:i + chunk_size]
             
             try:
-                # CORRECTION: Utiliser transaction (si supporté par le client Supabase)
-                # Note: Supabase Python client v2.27.2 ne supporte pas nativement .transaction()
-                # On simule une transaction en vérifiant le succès de l'insertion
-                
                 result = self.supabase.table(self.target_table).insert(chunk).execute()
                 
-                # Vérifier si l'insertion a réussi (selon la réponse du client)
+                # Vérifier si l'insertion a réussi
                 if result and hasattr(result, 'data') and result.get('data'):
                     success_count += len(chunk)
                     logger.debug(f"Chunk {i//chunk_size + 1} inséré avec succès")
@@ -87,7 +83,7 @@ class BaseProcessor:
                     'error': str(e)
                 })
                 
-                # CORRECTION: En cas d'erreur, continuer pour ne pas bloquer tout le processus
+                # En cas d'erreur, continuer pour ne pas bloquer tout le processus
                 # mais journaliser l'erreur pour analyse ultérieure
         
         # Rapport final
@@ -96,7 +92,7 @@ class BaseProcessor:
         
         if failed_chunks:
             logger.error(f"{len(failed_chunks)}/{total_chunks} chunks échoués")
-            # CORRECTION: Sauvegarder les données échouées dans un fichier pour reprise
+            # Sauvegarder les données échouées dans un fichier pour reprise
             self.save_failed_chunks(failed_chunks)
         else:
             logger.info("Tous les chunks insérés avec succès")
@@ -158,8 +154,6 @@ class DedgePlanningProcessor(BaseProcessor):
         date_row_idx = None
         for idx, row in self.df.iterrows():
             if pd.notna(row['Date']).any() and isinstance(row['Date'], str):
-                # Trouver la ligne contenant les noms de dates
-                # (On va simplifier et prendre la première ligne valide)
                 date_row_idx = idx
                 break
         
@@ -182,7 +176,6 @@ class DedgePlanningProcessor(BaseProcessor):
         self.df.columns = [snake_case(str(col)) for col in self.df.columns]
         
         # Normaliser les colonnes de dates
-        # On itère sur les colonnes originales pour trouver les correspondantes
         original_columns = list(self.df.columns)
         date_columns_normalized = []
         for col in date_columns:
@@ -195,3 +188,36 @@ class DedgePlanningProcessor(BaseProcessor):
         logger.info(f"Shape final: {self.df.shape}")
         
         return True
+
+class ProcessorFactory:
+    """Factory pour instancier les bons processeurs selon le type de fichier."""
+    
+    @staticmethod
+    def get_processor(table_type, file_path, hotel_id, supabase_client: Client):
+        """
+        Instancie le processeur approprié selon le type de table.
+        
+        Args:
+            table_type (str): Type de données ('planning' ou 'reservation')
+            file_path (str): Chemin vers le fichier Excel
+            hotel_id (str): Identifiant de l'hôtel
+            supabase_client (Client): Client Supabase initialisé
+        
+        Returns:
+            BaseProcessor: Processeur instancié
+        
+        Raises:
+            ValueError: Si le type de table n'est pas supporté
+        """
+        table_type_lower = table_type.lower()
+        
+        if "planning" in table_type_lower:
+            logger.info(f"Instanciation de DedgePlanningProcessor pour '{table_type}'")
+            return DedgePlanningProcessor(file_path, hotel_id, supabase_client)
+        elif "reservation" in table_type_lower:
+            logger.info(f"Instanciation de DedgeReservationProcessor pour '{table_type}'")
+            return DedgeReservationProcessor(file_path, hotel_id, supabase_client)
+        else:
+            error_msg = f"Type de table inconnu: {table_type}. Attendu: 'planning' ou 'reservation'"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
