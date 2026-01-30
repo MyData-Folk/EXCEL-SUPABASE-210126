@@ -1,4 +1,4 @@
-# RMS Sync v2.1 - Full Stack (API + Frontend HTML)
+# RMS Sync v2.1 - Full Stack (API + Frontend HTML) with absolute paths
 import os
 import sys
 import json
@@ -13,7 +13,7 @@ from functools import wraps
 import traceback
 
 import pandas as pd
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -27,7 +27,7 @@ from processor import ProcessorFactory
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(name)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-# Setup logging avec fallback
+# Setup logging robust avec fallback
 def setup_logging():
     log_dir = '/app/logs'
     log_file = os.path.join(log_dir, 'app.log')
@@ -64,7 +64,7 @@ load_dotenv()
 
 # Configuration Flask
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 52428800))
+app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH',52428800))
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', './uploads')
 
 # Configuration CORS
@@ -75,6 +75,10 @@ CORS(app, resources={
         "allow_headers": ["Content-Type", "Authorization"]
     }
 })
+
+# Définir le chemin absolu du dossier de l'application
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(APP_DIR, 'uploads')
 
 @app.before_request
 def log_request_info():
@@ -89,22 +93,29 @@ def log_request_info():
 
 @app.route('/')
 def index():
-    """Page d'accueil (Dashboard)."""
+    """Page d'accueil (Dashboard) - Chemin absolu pour Docker."""
+    index_path = os.path.join(APP_DIR, 'index.html')
+    
     try:
-        return send_file('index.html')
+        logger.info(f"Serving index.html from: {index_path}")
+        return send_file(index_path)
     except FileNotFoundError:
+        logger.error(f"index.html not found at: {index_path}")
         return jsonify({
             "error": "index.html not found",
+            "path": index_path,
             "message": "The frontend file could not be found on the server."
         }), 404
 
 @app.route('/favicon.ico')
 def favicon():
-    """Icône du navigateur (évite les 404)."""
+    """Icône du navigateur - Chemin absolu pour Docker."""
+    favicon_path = os.path.join(APP_DIR, 'favicon.ico')
+    
     try:
-        return send_file('favicon.ico', mimetype='image/vnd.microsoft.icon')
+        return send_file(favicon_path, mimetype='image/vnd.microsoft.icon')
     except FileNotFoundError:
-        # Fallback vide pour éviter les 404 dans la console
+        logger.warning(f"favicon.ico not found at: {favicon_path}")
         return '', 204
 
 # ============================================================
@@ -117,6 +128,8 @@ def health_check():
     try:
         supabase_url = os.getenv('SUPABASE_URL')
         supabase_key = os.getenv('SUPABASE_KEY')
+        
+        logger.info(f"Health check - Supabase URL: {supabase_url}")
         
         if not supabase_url or not supabase_key:
             return jsonify({
@@ -132,6 +145,8 @@ def health_check():
             "status": "healthy",
             "supabase": "connected",
             "version": "2.1-fullstack",
+            "app_dir": APP_DIR,
+            "index_exists": os.path.exists(os.path.join(APP_DIR, 'index.html')),
             "timestamp": datetime.utcnow().isoformat()
         }), 200
     except Exception as e:
@@ -145,13 +160,19 @@ def health_check():
 @app.route('/api/diag-excel', methods=['GET'])
 def diag_excel():
     """Endpoint temporaire pour inspecter la structure du fichier Planning."""
-    file_path = 'MODELE DE FICHIER EXCEL/RAPPORT PLANNING D-EDGE.xlsx'
+    file_path = os.path.join(APP_DIR, 'MODELE DE FICHIER EXCEL', 'RAPPORT PLANNING D-EDGE.xlsx')
     
     if not os.path.exists(file_path):
-        return jsonify({"error": "File not found", "path": file_path}), 404
+        logger.error(f"Fichier introuvable: {file_path}")
+        return jsonify({
+            "error": "File not found",
+            "path": file_path
+        }), 404
     
     try:
         df = pd.read_excel(file_path)
+        logger.info(f"Fichier lu: {len(df)} lignes, {len(df.columns)} colonnes")
+        
         return jsonify({
             "path": file_path,
             "shape": df.shape,
@@ -160,26 +181,34 @@ def diag_excel():
         }), 200
     except Exception as e:
         logger.error(f"Erreur lecture Excel: {str(e)}", exc_info=True)
-        return jsonify({"error": str(e), "path": file_path}), 500
+        return jsonify({
+            "error": str(e),
+            "path": file_path
+        }), 500
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     """Endpoint d'upload de fichiers Excel."""
     if 'file' not in request.files:
+        logger.warning("Upload sans fichier")
         return jsonify({"error": "No file part"}), 400
     
     file = request.files['file']
     
     if file.filename == '':
+        logger.warning("Upload avec nom de fichier vide")
         return jsonify({"error": "No selected file"}), 400
     
     if file:
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        filename = file.filename
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        
+        logger.info(f"Upload démarré: {filename} -> {filepath}")
         
         try:
             file.save(filepath)
             file_size = os.path.getsize(filepath)
+            logger.info(f"Upload terminé: {file_size} bytes")
             
             return jsonify({
                 "message": "File uploaded successfully",
@@ -201,6 +230,7 @@ def upload_file():
 def parse_file():
     """Endpoint de parsing de fichiers Excel."""
     if 'file' not in request.files:
+        logger.warning("Parse sans fichier")
         return jsonify({"error": "No file part"}), 400
     
     file = request.files['file']
@@ -216,12 +246,14 @@ def parse_file():
             
             result = processor.push_to_supabase()
             records_inserted = result['success']
+            failed_chunks = result['failed']
             
             return jsonify({
                 "message": "File parsed and uploaded successfully",
                 "table_type": table_type,
                 "records_inserted": records_inserted,
                 "hotel_id": hotel_id,
+                "failed_chunks": len(failed_chunks),
                 "timestamp": datetime.utcnow().isoformat()
             }), 200
         except ValueError as e:
@@ -248,6 +280,7 @@ def handle_not_found(e):
         "error": "Resource not found",
         "path": request.path,
         "message": "The requested resource was not found on this server.",
+        "app_dir": APP_DIR,
         "timestamp": datetime.utcnow().isoformat()
     }), 404
 
@@ -263,7 +296,7 @@ def handle_internal_server_error(e):
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    """Gestionnaire d'erreurs global."""
+    """Gestionnaire d'erreurs global pour toutes les exceptions non gérées."""
     logger.error(f"Erreur non gérée: {str(e)}", exc_info=True)
     is_debug = os.getenv('FLASK_ENV') == 'development'
     
@@ -280,13 +313,16 @@ def handle_exception(e):
 # ============================================================
 
 if __name__ == '__main__':
-    # Création des dossiers nécessaires
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    # Création des dossiers nécessaires avec chemins absolus
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs('/app/logs', exist_ok=True)
     
-    logger.info("Application démarrée (Full Stack: API + Frontend)")
+    logger.info(f"Application démarrée (Full Stack)")
     logger.info(f"Environment: {os.getenv('FLASK_ENV', 'production')}")
+    logger.info(f"App Directory: {APP_DIR}")
+    logger.info(f"Upload Directory: {UPLOAD_DIR}")
     logger.info(f"Python Version: {sys.version.split()[0]}")
+    logger.info(f"index.html exists: {os.path.exists(os.path.join(APP_DIR, 'index.html'))}")
     
     if os.getenv('FLASK_ENV') == 'production':
         logger.info("Mode production: Gunicorn détecté")
