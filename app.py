@@ -104,11 +104,25 @@ def get_supabase_client() -> Client:
 # ============================================================
 @app.route('/api/debug/env', methods=['GET'])
 def debug_env():
-    """Liste les clés des variables d'env disponibles (sans les valeurs)."""
+    """Liste les clés des variables d'env disponibles et test la connexion Supabase."""
+    supabase_url = get_env_flexible('SUPABASE_URL')
+    supabase_key = get_env_flexible('SUPABASE_KEY')
+    
+    connection_test = "Not Attempted"
+    if supabase_url and supabase_key:
+        try:
+            supabase = create_client(supabase_url, supabase_key)
+            # Tentative de lecture simple pour tester la connexion réelle
+            res = supabase.table('hotels').select('count', count='exact').limit(1).execute()
+            connection_test = "SUCCESS" if res else "No Data"
+        except Exception as e:
+            connection_test = f"FAILED: {str(e)}"
+
     return jsonify({
         "keys": sorted(list(os.environ.keys())),
-        "supabase_url_found": get_env_flexible('SUPABASE_URL') is not None,
-        "supabase_key_found": get_env_flexible('SUPABASE_KEY') is not None,
+        "supabase_url_found": supabase_url is not None,
+        "supabase_key_found": supabase_key is not None,
+        "supabase_connection": connection_test,
         "python_version": sys.version
     })
 
