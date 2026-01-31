@@ -430,7 +430,7 @@ def get_hotels():
     try:
         logger.info("Tentative de récupération de la liste des hôtels...")
         supabase = get_supabase_client()
-        result = supabase.table('hotels').select('*').order('hotel_name').execute()
+        result = supabase.table('hotels').select('*').order('name').execute()
         logger.info(f"Liste des hôtels récupérée: {len(result.data)} hôtels trouvés.")
         return jsonify({'hotels': result.data})
     except Exception as e:
@@ -445,13 +445,13 @@ def get_hotels():
 @app.route('/api/hotels', methods=['POST'])
 def create_hotel():
     data = request.get_json()
-    hotel_id = data.get('hotel_id')
-    hotel_name = data.get('hotel_name')
-    if not hotel_id or not hotel_name:
-        return jsonify({'error': 'hotel_id et hotel_name sont requis'}), 400
+    code = data.get('hotel_id') or data.get('code')
+    name = data.get('hotel_name') or data.get('name')
+    if not code or not name:
+        return jsonify({'error': 'code et name sont requis'}), 400
     try:
         supabase = get_supabase_client()
-        result = supabase.table('hotels').insert({'hotel_id': hotel_id, 'hotel_name': hotel_name}).execute()
+        result = supabase.table('hotels').insert({'code': code, 'name': name}).execute()
         return jsonify({'success': True, 'hotel': result.data[0]})
     except Exception as e:
         logger.error(f"ERREUR POST /api/hotels: {e}")
