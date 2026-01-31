@@ -216,6 +216,84 @@ class DedgePlanningProcessor(BaseProcessor):
         
         logger.info(f"Planning: {len(self.df)} lignes prêtes")
 
+class OtaInsightProcessor(BaseProcessor):
+    """Processeur robuste pour OTA Insight."""
+    
+    def __init__(self, file_path, hotel_id, supabase_client, tab_name):
+        super().__init__(file_path, hotel_id, supabase_client)
+        self.tab_name = tab_name
+
+    def apply_transformations(self):
+        # Mapping des tables
+        tab_map = {
+            "Aperçu": "OTA APERÇU",
+            "Tarifs": "OTA TARIFS CONCURRENCE",
+            "vs. Hier": "OTA VS HIER",
+            "vs. 3 jours": "OTA VS 3 JOURS",
+            "vs. 7 jours": "OTA VS 7 JOURS"
+        }
+        
+        # Fuzzy matching
+        self.target_table = None
+        for key, table in tab_map.items():
+            if key.lower() in self.tab_name.lower():
+                self.target_table = table
+                break
+        
+        if not self.target_table:
+            raise ValueError(f"Onglet non reconnu: {self.tab_name}")
+        
+        logger.info(f"OTA: {self.tab_name} → {self.target_table}")
+        
+        # Détection d'en-tête (nrows=15 pour voir large)
+        try:
+            df_raw = pd.read_excel(self.file_path, sheet_name=self.tab_name, header=None, nrows=15)
+        except Exception as e:
+            logger.error(f"Erreur lecture onglet OTA {self.tab_name}: {e}")
+            raise e
+        
+        header_row = 0
+        for i, row in df_raw.iterrows():
+            non_empty = [v for v in row.iloc[:5] if pd.notna(v) and str(v).strip()]
+            if len(non_empty) >= 2:
+                row_str = " ".join([str(v) for v in row]).upper()
+                if any(k in row_str for k in ["DATE", "JOUR", "DEMANDE"]):
+                    header_row = i
+                    break
+        
+        logger.info(f"OTA: Header à la ligne {header_row}")
+        
+        # Re-lecture
+        self.df = pd.read_excel(self.file_path, sheet_name=self.tab_name, header=header_row)
+        
+        # Nettoyage colonnes
+        new_cols = []
+        cols_to_drop = []
+        for i, col in enumerate(self.df.columns):
+            if str(col).startswith('Unnamed'):
+                cols_to_drop.append(i)
+            else:
+                new_cols.append(snake_case(str(col)))
+        
+        if cols_to_drop:
+            self.df = self.df.drop(self.df.columns[cols_to_drop], axis=1)
+            logger.info(f"OTA: {len(cols_to_drop)} colonnes vides supprimées")
+        
+        self.df.columns = new_cols
+        
+        # Injection hotel_id
+        self.inject_hotel_id()
+        
+        # Normalisation dates
+        date_cols = [col for col in self.df.columns if 'date' in str(col).lower()]
+        self.normalize_dates(date_cols)
+        
+        # Supprimer lignes sans date
+        if 'date' in self.df.columns:
+            self.df = self.df.dropna(subset=['date'])
+        
+        logger.info(f"OTA: {len(self.df)} lignes prêtes")
+
 class SalonsEventsProcessor(BaseProcessor):
     """Processeur spécialisé pour les dates des salons et événements."""
     
@@ -240,7 +318,7 @@ class ProcessorFactory:
     """Factory pour instancier les bons processeurs selon le type de fichier."""
     
     @staticmethod
-    def get_processor(table_type, file_path, hotel_id, supabase_client: Client):
+    def get_processor(table_type, file_path, hotel_id, supabase_client: Client, tab_name=None):
         table_type_upper = table_type.upper()
         
         if "PLANNING" in table_type_upper:
@@ -249,5 +327,7 @@ class ProcessorFactory:
             return DedgeReservationProcessor(file_path, hotel_id, supabase_client)
         elif "SALON" in table_type_upper or "ÉVÉNEMENT" in table_type_upper or "EVENEMENT" in table_type_upper:
             return SalonsEventsProcessor(file_path, hotel_id, supabase_client)
+        elif "OTA" in table_type_upper:
+            return OtaInsightProcessor(file_path, hotel_id, supabase_client, tab_name)
         else:
             raise ValueError(f"Type de table inconnu: {table_type}")

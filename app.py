@@ -122,7 +122,7 @@ def handle_exception(e):
     return jsonify({
         "error": "Internal Server Error",
         "message": str(e),
-        "trace": traceback.format_exc() if app.debug else None
+        "trace": traceback.format_exc()
     }), 500
 
 # ============================================================
@@ -320,15 +320,31 @@ def import_append():
 @app.route('/api/auto-process', methods=['POST'])
 def auto_process():
     data = request.get_json()
-    filepath = os.path.join(UPLOAD_DIR, data['filename'])
+    filename = data.get('filename')
+    category = data.get('category')
+    hotel_id = data.get('hotel_id')
+    tab_name = data.get('tab_name')
+    
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    
+    logger.info(f"AUTO-PROCESS: file={filename}, cat={category}, hotel={hotel_id}, tab={tab_name}")
+    
     try:
-        processor = ProcessorFactory.get_processor(data['category'], filepath, data['hotel_id'], get_supabase_client())
+        supabase = get_supabase_client()
+        processor = ProcessorFactory.get_processor(category, filepath, hotel_id, supabase, tab_name=tab_name)
         processor.apply_transformations()
         res = processor.push_to_supabase()
-        return jsonify({'success': True, 'rows_inserted': res['success'], 'target_table': processor.target_table})
+        return jsonify({
+            'success': True, 
+            'rows_inserted': res['success'] if isinstance(res, dict) else res, 
+            'target_table': processor.target_table
+        })
     except Exception as e:
-        logger.error(f"Auto-process error: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"AUTO-PROCESS FAILURE: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({
+            'error': str(e),
+            'trace': traceback.format_exc() if app.debug else None
+        }), 500
 # ============================================================
 # ROUTES TEMPLATES
 # ============================================================
@@ -398,12 +414,19 @@ def apply_template(template_id):
 @app.route('/api/hotels', methods=['GET'])
 def get_hotels():
     try:
+        logger.info("Tentative de récupération de la liste des hôtels...")
         supabase = get_supabase_client()
         result = supabase.table('hotels').select('*').order('hotel_name').execute()
+        logger.info(f"Liste des hôtels récupérée: {len(result.data)} hôtels trouvés.")
         return jsonify({'hotels': result.data})
     except Exception as e:
-        logger.error(f"ERREUR GET /api/hotels: {e}")
-        return jsonify({'error': str(e)}), 500
+        error_detail = traceback.format_exc()
+        logger.error(f"ERREUR CRITIQUE GET /api/hotels: {str(e)}\n{error_detail}")
+        return jsonify({
+            'error': str(e),
+            'message': "Erreur lors de la récupération des hôtels. Vérifiez les credentials Supabase.",
+            'trace': error_detail 
+        }), 500
 
 @app.route('/api/hotels', methods=['POST'])
 def create_hotel():
