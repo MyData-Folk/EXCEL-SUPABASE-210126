@@ -394,6 +394,8 @@ def list_templates():
         return jsonify({'templates': result.data})
     except Exception as e:
         logger.error(f"ERREUR GET /api/templates: {e}")
+        if 'import_templates' in str(e):
+            return jsonify({'templates': [], 'warning': 'Table import_templates introuvable'}), 200
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates', methods=['POST'])
@@ -405,6 +407,8 @@ def create_template():
         return jsonify({'success': True, 'template': result.data[0]})
     except Exception as e:
         logger.error(f"ERREUR POST /api/templates: {e}")
+        if 'import_templates' in str(e):
+            return jsonify({'error': 'Table import_templates introuvable'}), 400
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates/<template_id>', methods=['PUT'])
@@ -416,6 +420,8 @@ def update_template(template_id):
         return jsonify({'success': True, 'template': result.data[0]})
     except Exception as e:
         logger.error(f"ERREUR PUT /api/templates: {e}")
+        if 'import_templates' in str(e):
+            return jsonify({'error': 'Table import_templates introuvable'}), 400
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates/<template_id>', methods=['DELETE'])
@@ -425,6 +431,8 @@ def delete_template(template_id):
         supabase.table('import_templates').delete().eq('id', template_id).execute()
         return jsonify({'success': True})
     except Exception as e:
+        if 'import_templates' in str(e):
+            return jsonify({'error': 'Table import_templates introuvable'}), 400
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates/<template_id>/apply', methods=['POST'])

@@ -7,6 +7,19 @@ create table if not exists public.disponibilites (
   ferme_a_la_vente text null
 );
 
+create table if not exists public.import_templates (
+  id uuid default gen_random_uuid() primary key,
+  name text not null,
+  description text null,
+  source_type text null,
+  target_table text not null,
+  sheet_name text null,
+  column_mapping jsonb not null default '{}'::jsonb,
+  column_types jsonb not null default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
 create table if not exists public.planning_tarifs (
   id bigserial primary key,
   hotel_id uuid not null references public.hotels(id),
