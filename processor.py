@@ -431,14 +431,18 @@ class OtaInsightProcessor(BaseProcessor):
         # Injection hotel_id
         self.inject_hotel_id()
         
-        # Normalisation dates (flexible: date, jour, etc.)
-        date_keywords = ['date', 'jour', 'arrivée', 'départ']
-        date_cols = [col for col in self.df.columns if any(k in str(col).lower() for k in date_keywords)]
+        # Normalisation dates (éviter "jour" qui n'est pas une date)
+        date_cols = [
+            col for col in self.df.columns
+            if "date" in str(col).lower() and "jour" not in str(col).lower()
+        ]
         logger.info(f"OTA: Colonnes de dates détectées: {date_cols}")
-        
+
+        if "jour" in self.df.columns:
+            self.df["jour"] = self.df["jour"].apply(clean_text)
+
         if date_cols:
             self.normalize_dates(date_cols)
-            # On garde les lignes qui ont au moins une date valide dans l'une des colonnes détectées
             self.df = self.df.dropna(subset=[date_cols[0]])
         
         logger.info(f"OTA: {len(self.df)} lignes prêtes")
