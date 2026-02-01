@@ -99,6 +99,17 @@ def get_supabase_client() -> Client:
         raise ValueError(msg)
     return create_client(url, key)
 
+
+def resolve_hotel_id(supabase: Client, hotel_code: str = None, hotel_id: str = None):
+    if hotel_code:
+        result = supabase.table('hotels').select('id').eq('code', hotel_code).limit(1).execute()
+        if not result.data:
+            raise ValueError(f"Hotel code introuvable: {hotel_code}")
+        return result.data[0]['id']
+    if hotel_id:
+        return hotel_id
+    raise ValueError("hotel_code ou hotel_id requis")
+
 # ============================================================
 # ROUTES DIAGNOSTIC
 # ============================================================
@@ -335,23 +346,36 @@ def import_append():
 def auto_process():
     data = request.get_json()
     filename = data.get('filename')
-    category = data.get('category')
+    category = data.get('category') or data.get('report_type')
+    hotel_code = data.get('hotel_code')
     hotel_id = data.get('hotel_id')
     tab_name = data.get('tab_name')
     
     filepath = os.path.join(UPLOAD_DIR, filename)
     
-    logger.info(f"AUTO-PROCESS: file={filename}, cat={category}, hotel={hotel_id}, tab={tab_name}")
+    logger.info(f"AUTO-PROCESS: file={filename}, cat={category}, hotel={hotel_id or hotel_code}, tab={tab_name}")
     
     try:
         supabase = get_supabase_client()
-        processor = ProcessorFactory.get_processor(category, filepath, hotel_id, supabase, tab_name=tab_name)
+        resolved_hotel_id = resolve_hotel_id(supabase, hotel_code=hotel_code, hotel_id=hotel_id)
+        processor = ProcessorFactory.get_processor(category, filepath, resolved_hotel_id, supabase, tab_name=tab_name)
         processor.apply_transformations()
         res = processor.push_to_supabase()
+        if isinstance(res, dict):
+            if 'success' in res:
+                rows_inserted = res['success']
+            else:
+                rows_inserted = sum(
+                    value if isinstance(value, int) else value.get('success', 0)
+                    for value in res.values()
+                )
+        else:
+            rows_inserted = res
         return jsonify({
-            'success': True, 
-            'rows_inserted': res['success'] if isinstance(res, dict) else res, 
-            'target_table': processor.target_table
+            'success': True,
+            'rows_inserted': rows_inserted,
+            'target_table': processor.target_table,
+            'result': res
         })
     except Exception as e:
         logger.error(f"AUTO-PROCESS FAILURE: {str(e)}\n{traceback.format_exc()}")
@@ -370,6 +394,8 @@ def list_templates():
         return jsonify({'templates': result.data})
     except Exception as e:
         logger.error(f"ERREUR GET /api/templates: {e}")
+        if 'import_templates' in str(e):
+            return jsonify({'templates': [], 'warning': 'Table import_templates introuvable'}), 200
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates', methods=['POST'])
@@ -381,6 +407,8 @@ def create_template():
         return jsonify({'success': True, 'template': result.data[0]})
     except Exception as e:
         logger.error(f"ERREUR POST /api/templates: {e}")
+        if 'import_templates' in str(e):
+            return jsonify({'error': 'Table import_templates introuvable'}), 400
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates/<template_id>', methods=['PUT'])
@@ -392,6 +420,8 @@ def update_template(template_id):
         return jsonify({'success': True, 'template': result.data[0]})
     except Exception as e:
         logger.error(f"ERREUR PUT /api/templates: {e}")
+        if 'import_templates' in str(e):
+            return jsonify({'error': 'Table import_templates introuvable'}), 400
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates/<template_id>', methods=['DELETE'])
@@ -401,6 +431,8 @@ def delete_template(template_id):
         supabase.table('import_templates').delete().eq('id', template_id).execute()
         return jsonify({'success': True})
     except Exception as e:
+        if 'import_templates' in str(e):
+            return jsonify({'error': 'Table import_templates introuvable'}), 400
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates/<template_id>/apply', methods=['POST'])
