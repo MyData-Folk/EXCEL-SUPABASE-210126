@@ -457,6 +457,87 @@ class BookingComProcessor(BaseProcessor):
 
     def _load_update_date(self):
         import openpyxl
+        wb = openpyxl.load_workbook(self.file_path, data_only=True)
+        target_sheet = None
+        for name in wb.sheetnames:
+            if "tarif" in name.lower():
+                target_sheet = name
+                break
+        if not target_sheet:
+            return None
+        sheet = wb[target_sheet]
+
+        def parse_update_value(value):
+            if value is None:
+                return None
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if value > 30000:
+                    parsed_date = pd.to_datetime(value, errors="coerce", unit="D", origin="1899-12-30")
+                else:
+                    parsed_date = pd.NaT
+            else:
+                parsed_date = pd.to_datetime(value, errors="coerce", dayfirst=True)
+            value_str = None
+            if isinstance(value, str):
+                value_str = value.replace("\xa0", " ").strip()
+            if pd.isna(parsed_date) and value_str:
+                match = re.match(r"^(\\d{1,2})/(\\d{1,2})\\s+(\\d{1,2}):(\\d{2})$", value_str)
+                if match:
+                    day, month, hour, minute = match.groups()
+                    year = datetime.now().year
+                    parsed_date = pd.to_datetime(
+                        f"{year}-{month}-{day} {hour}:{minute}",
+                        errors="coerce"
+                    )
+            if pd.isna(parsed_date) and value_str:
+                match = re.match(r"^(\\d{1,2})/(\\d{1,2})$", value_str)
+                if match:
+                    day, month = match.groups()
+                    year = datetime.now().year
+                    parsed_date = pd.to_datetime(
+                        f"{year}-{month}-{day}",
+                        errors="coerce"
+                    )
+            if pd.isna(parsed_date):
+                return None
+            if parsed_date.time().strftime("%H:%M:%S") == "00:00:00":
+                return parsed_date.strftime("%Y-%m-%d")
+            return parsed_date.isoformat()
+
+        raw_value = sheet["G3"].value
+        parsed_value = parse_update_value(raw_value)
+        if parsed_value:
+            return parsed_value
+
+        row3_values = [sheet.cell(row=3, column=c).value for c in range(1, sheet.max_column + 1)]
+        for value in row3_values:
+            parsed_value = parse_update_value(value)
+            if parsed_value:
+                return parsed_value
+
+        for row in sheet.iter_rows(min_row=1, max_row=5, values_only=True):
+            for idx, cell in enumerate(row):
+                if isinstance(cell, str) and "mis" in cell.lower():
+                    candidate = row[idx + 1] if idx + 1 < len(row) else None
+                    parsed_value = parse_update_value(candidate)
+                    if parsed_value:
+                        return parsed_value
+
+        df_header = pd.read_excel(self.file_path, sheet_name=target_sheet, header=None, nrows=5)
+        for row_idx in range(df_header.shape[0]):
+            for col_idx in range(df_header.shape[1]):
+                cell_value = df_header.iat[row_idx, col_idx]
+                if isinstance(cell_value, str) and "mis" in cell_value.lower():
+                    for next_col in range(col_idx + 1, df_header.shape[1]):
+                        parsed_value = parse_update_value(df_header.iat[row_idx, next_col])
+                        if parsed_value:
+                            return parsed_value
+                    for next_row in range(row_idx + 1, df_header.shape[0]):
+                        parsed_value = parse_update_value(df_header.iat[next_row, col_idx])
+                        if parsed_value:
+                            return parsed_value
+
+        return None
         wb = openpyxl.load_workbook(self.file_path, data_only=True, read_only=True)
         if "Tarifs" not in wb.sheetnames:
             return None
@@ -488,6 +569,106 @@ class BookingComProcessor(BaseProcessor):
         df_infos.insert(1, "date_mise_a_jour", date_mise_a_jour)
         return df_infos
 
+    def apply_transformations(self):
+        self.date_mise_a_jour = self._load_update_date()
+        if not self.date_mise_a_jour:
+            logger.warning("Date mise à jour introuvable, fallback sur la date du jour.")
+            self.date_mise_a_jour = datetime.now().strftime("%Y-%m-%d")
+
+        self.tables_data = {}
+
+        df_apercu = self._read_booking_sheet("Aperçu")
+        apercu_numeric_cols = [
+            "Votre hôtel le plus bas",
+            "Tarif le plus bas",
+            "médiane du compset",
+            "Demande du marché"
+        ]
+        if "Date" in df_apercu.columns:
+            df_apercu["Date"] = df_apercu["Date"].apply(parse_iso_date)
+        for col in apercu_numeric_cols:
+            if col in df_apercu.columns:
+                df_apercu[col] = df_apercu[col].apply(parse_numeric_zero)
+        df_apercu.insert(0, "hotel_id", self.hotel_id)
+        df_apercu.insert(1, "date_mise_a_jour", self.date_mise_a_jour)
+        self.tables_data["booking_apercu"] = df_apercu
+
+        df_tarifs = self._read_booking_sheet("Tarifs")
+        demand_col = next((c for c in df_tarifs.columns if str(c).strip().lower() == "demande du marché"), None)
+        if demand_col is None:
+            raise ValueError("Colonne 'Demande du marché' introuvable dans Tarifs.")
+        demand_idx = list(df_tarifs.columns).index(demand_col)
+        competitor_cols = list(df_tarifs.columns)[demand_idx + 1:]
+        if "Date" in df_tarifs.columns:
+            df_tarifs["Date"] = df_tarifs["Date"].apply(parse_iso_date)
+        for col in [demand_col] + competitor_cols:
+            df_tarifs[col] = df_tarifs[col].apply(parse_numeric_zero)
+        df_tarifs.insert(0, "hotel_id", self.hotel_id)
+        df_tarifs.insert(1, "date_mise_a_jour", self.date_mise_a_jour)
+        self.tables_data["booking_tarifs"] = df_tarifs
+
+        df_tarifs_raw = self._read_booking_sheet("Tarifs")
+        df_tarifs_infos = self._prepare_infos_table(df_tarifs_raw, self.hotel_id, self.date_mise_a_jour)
+        self.tables_data["booking_infos_tarifs"] = df_tarifs_infos
+
+        vs_sheets = {
+            "vs. Hier": "vs.hier",
+            "vs. 3 jours": "vs.3j",
+            "vs. 7 jours": "vs.7j"
+        }
+
+        for sheet_name, prefix in vs_sheets.items():
+            df_vs = self._read_booking_sheet(sheet_name, keep_unnamed=True)
+            new_cols = []
+            last_named = None
+            for col in df_vs.columns:
+                col_name = str(col)
+                if col_name.startswith("Unnamed") or col_name == "nan":
+                    if not last_named:
+                        new_cols.append(col_name)
+                    else:
+                        new_cols.append(f"{prefix}__{last_named}")
+                else:
+                    new_cols.append(col_name)
+                    last_named = col_name
+            df_vs.columns = new_cols
+
+            if "Date" in df_vs.columns:
+                df_vs["Date"] = df_vs["Date"].apply(parse_iso_date)
+            numeric_cols = [c for c in df_vs.columns if c not in {"Jour", "Date"}]
+            for col in numeric_cols:
+                df_vs[col] = df_vs[col].apply(parse_numeric_zero)
+            df_vs.insert(0, "hotel_id", self.hotel_id)
+            df_vs.insert(1, "date_mise_a_jour", self.date_mise_a_jour)
+            self.tables_data[f"booking_{prefix.replace('.', '_')}"] = df_vs
+
+            df_vs_raw = self._read_booking_sheet(sheet_name, keep_unnamed=True)
+            df_vs_raw.columns = new_cols
+            df_vs_infos = self._prepare_infos_table(df_vs_raw, self.hotel_id, self.date_mise_a_jour)
+            self.tables_data[f"booking_infos_{prefix.replace('.', '_')}"] = df_vs_infos
+
+        self.target_table = list(self.tables_data.keys())
+
+    def push_to_supabase(self):
+        results = {}
+        for table_name, df in self.tables_data.items():
+            df_clean = df.replace({pd.NaT: None}).where(pd.notnull(df), None)
+            records = df_clean.to_dict(orient="records")
+            clean_records = [json_safe(record) for record in records]
+            chunk_size = 500
+            success_count = 0
+            for i in range(0, len(clean_records), chunk_size):
+                chunk = clean_records[i:i + chunk_size]
+                self.supabase.table(table_name).insert(chunk).execute()
+                success_count += len(chunk)
+            results[table_name] = success_count
+        return results
+
+
+class BookingExportProcessor(BaseProcessor):
+    """Processeur pour BookingExport."""
+
+    def apply_transformations(self):
     def apply_transformations(self):
         self.date_mise_a_jour = self._load_update_date()
         if not self.date_mise_a_jour:
@@ -669,6 +850,10 @@ class ProcessorFactory:
     @staticmethod
     def get_processor(table_type, file_path, hotel_id, supabase_client: Client, tab_name=None):
         table_type_upper = (table_type or "").upper()
+        filename_upper = os.path.basename(file_path).upper()
+
+        if "PLANNING" in filename_upper and "FOLKESTONE" in filename_upper:
+            return FolkestonePlanningProcessor(file_path, hotel_id, supabase_client)
         
         if "D-EDGE" in table_type_upper and "PLANNING" in table_type_upper:
             return DedgePlanningProcessor(file_path, hotel_id, supabase_client)

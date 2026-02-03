@@ -102,10 +102,16 @@ def get_supabase_client() -> Client:
 
 def resolve_hotel_id(supabase: Client, hotel_code: str = None, hotel_id: str = None):
     if hotel_code:
-        result = supabase.table('hotels').select('id').eq('code', hotel_code).limit(1).execute()
-        if not result.data:
-            raise ValueError(f"Hotel code introuvable: {hotel_code}")
-        return result.data[0]['id']
+        try:
+            result = supabase.table('hotels').select('id').eq('code', hotel_code).limit(1).execute()
+            if result.data:
+                return result.data[0]['id']
+        except Exception as e:
+            logger.warning(f"Hotel lookup via code failed: {e}")
+        result = supabase.table('hotels').select('id').eq('hotel_id', hotel_code).limit(1).execute()
+        if result.data:
+            return result.data[0]['id']
+        raise ValueError(f"Hotel code introuvable: {hotel_code}")
     if hotel_id:
         return hotel_id
     raise ValueError("hotel_code ou hotel_id requis")
