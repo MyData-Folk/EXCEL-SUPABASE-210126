@@ -462,9 +462,18 @@ def get_hotels():
     try:
         logger.info("Tentative de récupération de la liste des hôtels...")
         supabase = get_supabase_client()
-        result = supabase.table('hotels').select('*').order('name').execute()
-        logger.info(f"Liste des hôtels récupérée: {len(result.data)} hôtels trouvés.")
-        return jsonify({'hotels': result.data})
+        try:
+            result = supabase.table('hotels').select('*').order('name').execute()
+            data = result.data or []
+            if data:
+                logger.info(f"Liste des hôtels récupérée: {len(data)} hôtels trouvés.")
+                return jsonify({'hotels': data})
+        except Exception as inner_error:
+            logger.warning(f"Fallback hotels query: {inner_error}")
+        result = supabase.table('hotels').select('*').execute()
+        data = result.data or []
+        logger.info(f"Liste des hôtels récupérée: {len(data)} hôtels trouvés.")
+        return jsonify({'hotels': data})
     except Exception as e:
         error_detail = traceback.format_exc()
         logger.error(f"ERREUR CRITIQUE GET /api/hotels: {str(e)}\n{error_detail}")
@@ -484,6 +493,9 @@ def create_hotel():
     try:
         supabase = get_supabase_client()
         result = supabase.table('hotels').insert({'code': code, 'name': name}).execute()
+        if result.data:
+            return jsonify({'success': True, 'hotel': result.data[0]})
+        result = supabase.table('hotels').insert({'hotel_id': code, 'hotel_name': name}).execute()
         return jsonify({'success': True, 'hotel': result.data[0]})
     except Exception as e:
         logger.error(f"ERREUR POST /api/hotels: {e}")
@@ -529,6 +541,10 @@ def list_cache():
         return jsonify({'files': sorted(files, key=lambda x: x['created_at'], reverse=True)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/favicon.ico')
+def favicon():
+    return ('', 204)
 
 if __name__ == '__main__':
     ensure_upload_folder()
