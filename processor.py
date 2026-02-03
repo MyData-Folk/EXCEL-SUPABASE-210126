@@ -466,42 +466,78 @@ class BookingComProcessor(BaseProcessor):
         if not target_sheet:
             return None
         sheet = wb[target_sheet]
+
+        def parse_update_value(value):
+            if value is None:
+                return None
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if value > 30000:
+                    parsed_date = pd.to_datetime(value, errors="coerce", unit="D", origin="1899-12-30")
+                else:
+                    parsed_date = pd.NaT
+            else:
+                parsed_date = pd.to_datetime(value, errors="coerce", dayfirst=True)
+            value_str = None
+            if isinstance(value, str):
+                value_str = value.replace("\xa0", " ").strip()
+            if pd.isna(parsed_date) and value_str:
+                match = re.match(r"^(\\d{1,2})/(\\d{1,2})\\s+(\\d{1,2}):(\\d{2})$", value_str)
+                if match:
+                    day, month, hour, minute = match.groups()
+                    year = datetime.now().year
+                    parsed_date = pd.to_datetime(
+                        f"{year}-{month}-{day} {hour}:{minute}",
+                        errors="coerce"
+                    )
+            if pd.isna(parsed_date) and value_str:
+                match = re.match(r"^(\\d{1,2})/(\\d{1,2})$", value_str)
+                if match:
+                    day, month = match.groups()
+                    year = datetime.now().year
+                    parsed_date = pd.to_datetime(
+                        f"{year}-{month}-{day}",
+                        errors="coerce"
+                    )
+            if pd.isna(parsed_date):
+                return None
+            if parsed_date.time().strftime("%H:%M:%S") == "00:00:00":
+                return parsed_date.strftime("%Y-%m-%d")
+            return parsed_date.isoformat()
+
         raw_value = sheet["G3"].value
-        if raw_value is None:
-            row3_values = [sheet.cell(row=3, column=c).value for c in range(1, sheet.max_column + 1)]
-            for value in row3_values:
-                parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
-                if not pd.isna(parsed):
-                    raw_value = value
-                    break
-        if raw_value is None:
-            for row in sheet.iter_rows(min_row=1, max_row=5, values_only=True):
-                for idx, cell in enumerate(row):
-                    if isinstance(cell, str) and "mis" in cell.lower():
-                        candidate = row[idx + 1] if idx + 1 < len(row) else None
-                        parsed = pd.to_datetime(candidate, errors="coerce", dayfirst=True)
-                        if not pd.isna(parsed):
-                            raw_value = candidate
-                            break
-                if raw_value is not None:
-                    break
-        if raw_value is None:
-            return None
-        parsed = pd.to_datetime(raw_value, errors="coerce", dayfirst=True)
-        if pd.isna(parsed) and isinstance(raw_value, str):
-            match = re.match(r"^(\\d{1,2})/(\\d{1,2})\\s+(\\d{1,2}):(\\d{2})$", raw_value.strip())
-            if match:
-                day, month, hour, minute = match.groups()
-                year = datetime.now().year
-                parsed = pd.to_datetime(
-                    f"{year}-{month}-{day} {hour}:{minute}",
-                    errors="coerce"
-                )
-        if pd.isna(parsed):
-            return None
-        if parsed.time().strftime("%H:%M:%S") == "00:00:00":
-            return parsed.strftime("%Y-%m-%d")
-        return parsed.isoformat()
+        parsed_value = parse_update_value(raw_value)
+        if parsed_value:
+            return parsed_value
+
+        row3_values = [sheet.cell(row=3, column=c).value for c in range(1, sheet.max_column + 1)]
+        for value in row3_values:
+            parsed_value = parse_update_value(value)
+            if parsed_value:
+                return parsed_value
+
+        for row in sheet.iter_rows(min_row=1, max_row=5, values_only=True):
+            for idx, cell in enumerate(row):
+                if isinstance(cell, str) and "mis" in cell.lower():
+                    candidate = row[idx + 1] if idx + 1 < len(row) else None
+                    parsed_value = parse_update_value(candidate)
+                    if parsed_value:
+                        return parsed_value
+
+        df_header = pd.read_excel(self.file_path, sheet_name=target_sheet, header=None, nrows=5)
+        for row_idx in range(df_header.shape[0]):
+            for col_idx in range(df_header.shape[1]):
+                cell_value = df_header.iat[row_idx, col_idx]
+                if isinstance(cell_value, str) and "mis" in cell_value.lower():
+                    for next_col in range(col_idx + 1, df_header.shape[1]):
+                        parsed_value = parse_update_value(df_header.iat[row_idx, next_col])
+                        if parsed_value:
+                            return parsed_value
+                    for next_row in range(row_idx + 1, df_header.shape[0]):
+                        parsed_value = parse_update_value(df_header.iat[next_row, col_idx])
+                        if parsed_value:
+                            return parsed_value
+
+        return None
 
     def _read_booking_sheet(self, sheet_name, keep_unnamed=False):
         df = pd.read_excel(self.file_path, sheet_name=sheet_name, header=4)
@@ -523,7 +559,8 @@ class BookingComProcessor(BaseProcessor):
     def apply_transformations(self):
         self.date_mise_a_jour = self._load_update_date()
         if not self.date_mise_a_jour:
-            raise ValueError("Impossible de lire la date de mise à jour (Tarifs!G3).")
+            logger.warning("Date mise à jour introuvable, fallback sur la date du jour.")
+            self.date_mise_a_jour = datetime.now().strftime("%Y-%m-%d")
 
         self.tables_data = {}
 
